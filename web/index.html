@@ -32,6 +32,13 @@
                 Failed to load /ipinfo.json
             </div>
         </div>
+        <div>
+            API Endpoints, refreshed every 10 seconds:
+            <ul>
+                <li><a href="status.json">status.json</a></li>
+                <li><a href="ipinfo.json">ipinfo.json</a></li>
+            </ul>
+        </div>
         <script>
             fetch("/ipinfo.json")
                 .then((response) => {

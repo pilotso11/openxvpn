@@ -1,26 +1,36 @@
 #!/bin/bash
 # Healthcheck script for OpenVPN container.
-rm -rf /tmp/new.ip
-curl -s -o /tmp/new.ip https://ifconfig.co
-if [ -f /tmp/old.ip ] && [ -f /tmp/new.ip ]; then
-    old_ip=$(cat /tmp/old.ip)
-    new_ip=$(cat /tmp/new.ip)
-    if [ "$old_ip" != "$new_ip" ]; then
+
+set -euo pipefail
+
+NEW_IP_FILE="/tmp/new.ip"
+OLD_IP_FILE="/tmp/old.ip"
+STATUS_FILE="/tmp/status.txt"
+
+# Fetch new IP, handle curl failure
+if ! curl -fsSL -o "$NEW_IP_FILE" https://ifconfig.co; then
+    echo "ERROR: Failed to fetch new IP" | tee "$STATUS_FILE" >&2
+    exit 1
+fi
+
+if [[ -f "$OLD_IP_FILE" && -s "$NEW_IP_FILE" ]]; then
+    old_ip=$(<"$OLD_IP_FILE")
+    new_ip=$(<"$NEW_IP_FILE")
+    if [[ "$old_ip" != "$new_ip" ]]; then
         echo "IP address changed from $old_ip to $new_ip"
-        echo "OK" > /tmp/status.txt
+        echo "OK" > "$STATUS_FILE"
         exit 0
     else
         echo "IP address remains the same"
-        echo "ERROR: unchanged" > /tmp/status.txt
+        echo "ERROR: unchanged" > "$STATUS_FILE"
         exit 1
     fi
-elif [ -f /tmp/new.ip ]; then
-    echo "New IP address could not be determined"
-    echo "ERROR: new ip" > /tmp/status.txt
+elif [[ -s "$NEW_IP_FILE" ]]; then
+    echo "New IP address could not be determined" | tee "$STATUS_FILE" >&2
+    echo "ERROR: new ip" > "$STATUS_FILE"
     exit 1
 else
-    echo "Original IP address could not be determined"
-    echo "ERROR: old ip" > /tmp/status.txt
+    echo "Original IP address could not be determined" | tee "$STATUS_FILE" >&2
+    echo "ERROR: old ip" > "$STATUS_FILE"
     exit 1
 fi
-exit 1

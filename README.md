@@ -58,16 +58,20 @@ services:
     networks:
       - vpn
     restart: unless-stopped
-    environment:
-      - OPEN_VPN_USER=your_expressvpn_username
-      - OPEN_VPN_PASSWORD=your_expressvpn_password
-      # - SERVER=sydney   # Optional: partial match for preferred server config file
-      # - LAN=192.168.2.0/24  # Optional: your local network CIDR
     cap_add:
       - NET_ADMIN
     devices:
       - /dev/net/tun:/dev/net/tun
     privileged: true
+    environment:
+      - OPEN_VPN_USER=your_expressvpn_username
+      - OPEN_VPN_PASSWORD=your_expressvpn_password
+      # Alternatively pass user/pass in a file that is attached to the container.
+      # - OPEN_VPN_USER_PASS_PATH=/config/openvpn/userpass.txt
+      # - SERVER=sydney   # Optional: partial match for preferred server config file
+      - LAN=192.168.2.0/24  #  your local network CIDR so we can route internal traffic back to the host for internal services, such as our status page.
+    # volumes:
+      # - ./config/openvpn:/config/openvpn  # Mount my userpass.txt
     ports:
       - "8000:80"   # VPN Status Web UI
       - "9000:9000" # Example: another service port
@@ -88,10 +92,11 @@ services:
 
 | Variable           | Required | Description                                                                 |
 |--------------------|----------|-----------------------------------------------------------------------------|
-| `OPEN_VPN_USER`    | Yes      | Your ExpressVPN username                                                    |
-| `OPEN_VPN_PASSWORD`| Yes      | Your ExpressVPN password                                                    |
+| `OPEN_VPN_USER`    | One-Of      | Your ExpressVPN username                                                    |
+| `OPEN_VPN_PASSWORD`| One-Of      | Your ExpressVPN password                                                    |
+| `OPEN_VPN_USER_PASS_PATH`| One-Of      | Path to a file containing your ExpressVPN username and password on two lines (e.g., `/path/to/userpass.txt`) |
 | `SERVER`           | No       | Partial string to select a specific `.ovpn` config (e.g., `sydney`, `usa`)  |
-| `LAN`              | No       | Local network CIDR to keep accessible (default: `192.168.2.0/24`)           |
+| `LAN`              | Recommended       | Local network CIDR to keep accessible (default: `192.168.2.0/24`)           |
 
 ---
 

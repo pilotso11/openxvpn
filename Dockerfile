@@ -1,29 +1,32 @@
 FROM alpine:latest
 
-RUN apk add --update --no-cache openvpn bash curl mini_httpd
+LABEL maintainer="pilotso11"
+LABEL org.opencontainers.image.source="https://github.com/pilotso11/openxvpn"
+LABEL description="Lightweight OpenVPN + ExpressVPN Docker image for proxying other services"
 
-ARG TARGETPLATFORM
-RUN echo "Building for ${TARGETPLATFORM}"
-
-# ExpressVPN user credentials.
-ENV OPEN_VPN_USER=""
-ENV OPEN_VPN_PASSWORD=""
-
-# Preferred ExpressVPN Server.  Used to pick the configuration file via a glob expression.
-ENV SERVER=""
-
-# Local network cidr
-ENV LAN="192.168.2.0/24"
+RUN apk add --update --no-cache openvpn bash curl mini_httpd \
+    && mkdir -p /vpn/config /vpn/templates /vpn/web
 
 WORKDIR /vpn
-RUN mkdir -p /vpn/config
-RUN mkdir -p /vpn/templates
-RUN mkdir -p /vpn/web
-COPY ./expressvpn/*.ovpn /vpn/config/
-COPY scripts/*.sh /vpn/
-COPY web/* /vpn/templates/
 
+# Copy ExpressVPN config files
+COPY expressvpn/ /vpn/config/
+# Copy scripts and ensure they are executable
+COPY scripts/ /vpn/
+RUN chmod +x /vpn/*.sh
+# Copy web templates
+COPY web/ /vpn/templates/
+
+# Environment variables (set at runtime)
+ENV OPEN_VPN_USER=""
+ENV OPEN_VPN_PASSWORD=""
+ENV OPEN_VPN_USER_PASS_PATH=""
+ENV SERVER=""
+ENV LAN="192.168.0.0/16"
+
+# Expose status web UI port (mapped to host as needed)
 EXPOSE 80
+
 HEALTHCHECK --interval=30s --timeout=10s \
     --start-period=5s --retries=3 CMD [ "/bin/bash", "/vpn/check.sh" ]
 

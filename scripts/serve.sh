@@ -16,4 +16,9 @@ do
         -e "s/%STATUS%/$STATUS/g" \
         -e "s/%NOW%/$NOW/g" \
         /vpn/templates/index.html > /vpn/web/index.html
+    sed -e "s/%IPADDR%/$IP/g" \
+        -e "s/%ORIGADDR%/$ORIG/g" \
+        -e "s/%STATUS%/$STATUS/g" \
+        -e "s/%NOW%/$NOW/g" \
+        /vpn/templates/status.json > /vpn/web/status.json
 done

@@ -25,6 +25,6 @@ COPY web/index.html /vpn/templates/
 
 EXPOSE 80
 HEALTHCHECK --interval=30s --timeout=10s \
-    --start-period=5s --retries=3 CMD [ "/vpn/check.sh" ]
+    --start-period=5s --retries=3 CMD [ "/bin/bash", "/vpn/check.sh" ]
 
 ENTRYPOINT [ "/bin/bash", "/vpn/vpn.sh" ]

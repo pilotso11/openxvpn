@@ -17,10 +17,11 @@ ENV LAN="192.168.2.0/24"
 
 WORKDIR /vpn
 RUN mkdir -p /vpn/config
+RUN mkdir -p /vpn/templates
 RUN mkdir -p /vpn/web
 COPY ./expressvpn/*.ovpn /vpn/config/
 COPY scripts/*.sh /vpn/
-COPY web/template.html /vpn/web/
+COPY web/index.html /vpn/templates/
 
 EXPOSE 80
 HEALTHCHECK --interval=30s --timeout=10s \

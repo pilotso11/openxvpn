@@ -6,13 +6,14 @@ while true;
 do
     sleep 10
     # echo "Refresh IP Status"
-    IP=`curl -s https://ifconfig.co`
     curl -s -o /vpn/web/ipinfo.json https://ipinfo.io/
+    IP=`curl -s https://ifconfig.co`
     ORIG=$(cat /tmp/old.ip)
     STATUS=$(cat /tmp/status.txt)
     NOW=$(date)
-    sed "s/%IPADDR%/$IP/g" /vpn/template.html | \
-        sed "s/%ORIGADDR%/$ORIG/g" | \
-        sed "s/%STATUS%/$STATUS/g" | \
-        sed "s/%NOW%/$NOW/g" > /vpn/web/index.html
+    sed -e "s/%IPADDR%/$IP/g" \
+        -e "s/%ORIGADDR%/$ORIG/g" \
+        -e "s/%STATUS%/$STATUS/g" \
+        -e "s/%NOW%/$NOW/g" \
+        /vpn/templates/index.html > /vpn/web/index.html
 done

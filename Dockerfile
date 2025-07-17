@@ -21,7 +21,7 @@ RUN mkdir -p /vpn/templates
 RUN mkdir -p /vpn/web
 COPY ./expressvpn/*.ovpn /vpn/config/
 COPY scripts/*.sh /vpn/
-COPY web/index.html /vpn/templates/
+COPY web/* /vpn/templates/
 
 EXPOSE 80
 HEALTHCHECK --interval=30s --timeout=10s \

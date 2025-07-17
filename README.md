@@ -1,7 +1,6 @@
 # openxvpn
 
 [![Actions Status](https://github.com/pilotso11/openxvpn/actions/workflows/docker.yml/badge.svg)](https://github.com/pilotso11/openxvpn/actions/workflows/docker.yml)
-[![Docker Build](https://img.shields.io/docker/cloud/build/pilotso11/openxvpn?style=flat-square)](https://hub.docker.com/r/pilotso11/openxvpn/builds)
 [![Docker Pulls](https://img.shields.io/docker/pulls/pilotso11/openxvpn?style=flat-square)](https://hub.docker.com/r/pilotso11/openxvpn)
 [![MIT License](https://img.shields.io/github/license/pilotso11/openxvpn?style=flat-square)](./LICENSE)
 

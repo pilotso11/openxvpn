@@ -2,16 +2,16 @@
 # VPN Start script
 set -euo pipefail
 
-if [[ -z "$OPEN_VPN_USER_PASS_PATH"]]; then
+if [[ -z "${OPEN_VPN_USER_PASS_PATH:-}" ]]; then
     if [[ -z "${OPEN_VPN_USER:-}" ]] || [[ -z "${OPEN_VPN_PASSWORD:-}" ]]; then
         echo "OPEN_VPN_USER and OPEN_VPN_PASSWORD must be set" >&2
         exit 1
     fi
     USERPASSS=/tmp/user.txt
     # Create our user-pass file (permissions: owner read/write only)
-    umask 077
     echo "${OPEN_VPN_USER}" > ${USERPASS}
     echo "${OPEN_VPN_PASSWORD}" >> ${USERPASS}
+    chmod 700 ${USERPASS}
 else
     if [[ ! -f "$OPEN_VPN_USER_PASS_PATH" ]]; then
         echo "OPEN_VPN_USER_PASS_PATH file not found" >&2

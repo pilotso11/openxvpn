@@ -53,7 +53,5 @@ while true; do
         rm "${STATUS_TMP}"
     fi
 
-    ls -l /vpn/web
-
     sleep "${UPDATE_INTERVAL}"
 done

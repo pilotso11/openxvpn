@@ -7,7 +7,7 @@ if [[ -z "${OPEN_VPN_USER_PASS_PATH:-}" ]]; then
         echo "OPEN_VPN_USER and OPEN_VPN_PASSWORD must be set" >&2
         exit 1
     fi
-    USERPASSS=/tmp/user.txt
+    USERPASS=/tmp/user.txt
     # Create our user-pass file (permissions: owner read/write only)
     echo "${OPEN_VPN_USER}" > ${USERPASS}
     echo "${OPEN_VPN_PASSWORD}" >> ${USERPASS}

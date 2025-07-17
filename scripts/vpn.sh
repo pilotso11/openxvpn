@@ -15,8 +15,13 @@ cfg=`ls /vpn/config/*${SERVER}*.ovpn | shuf | head -n 1`
 /bin/bash /vpn/serve.sh &  # webserver in background
 
 # Ensure local network remains accessible
-# todo: we need to get this from the container, not hardcode it.
-ip route add $LAN via 172.19.0.1
+if [ -z "${LAN}" ]; then
+    echo "LAN not set - unable to add route back to LAN, status web server will be unavailable"
+else
+    gateway=$(ip route | grep eth0 | grep default | cut -f3 -d' ')
+    echo "lan route: route add ${LAN} via ${gateway}"
+    ip route add ${LAN} via ${gateway}
+fi
 
 openvpn --config "${cfg}" --script-security 2 \
     --up /etc/openvpn/up.sh \

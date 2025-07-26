@@ -5,6 +5,11 @@ set -euo pipefail
 # Configurable update interval (seconds)
 UPDATE_INTERVAL="${UPDATE_INTERVAL:-10}"
 
+# Load IP2LOCATION_IO_KEY from file if specified
+if [ -n "${IP2LOCATION_IO_KEY_FILE:-}" ] && [ -f "$IP2LOCATION_IO_KEY_FILE" ]; then
+    IP2LOCATION_IO_KEY=$(cat "$IP2LOCATION_IO_KEY_FILE")
+fi
+
 mini_httpd -r -d /vpn/web -p 80 -D &
 HTTPD_PID=$!
 
@@ -14,14 +19,20 @@ cleanup() {
 }
 trap cleanup SIGINT SIGTERM
 
-while true; do
-    # Fetch IP info JSON
-    if ! curl -fsSL -o /vpn/web/ipinfo.json https://ipinfo.io/; then
-        echo "Failed to fetch ipinfo.json" >&2
-    fi
 
+while true; do
     IPADDR=$(curl -fsSL https://ifconfig.co || echo "unknown")
-    ORIGADDR=$(cat /tmp/old.ip 2>/dev/null || echo "unknown")
+    ORIGADDR=$(cat /tmp/orig.ip 2>/dev/null || echo "unknown")
+    OLDIP=$(cat /tmp/old.ip 2>/dev/null || echo "unknown")
+
+    # Fetch IP info JSON only if IP has changed or it's the first run
+    if [ "$IPADDR" != "$OLDIP" ]; then
+        if ! curl -fsSL -o /vpn/web/ipinfo.json https://api.ip2location.io/?key=${IP2LOCATION_IO_KEY} ; then
+            echo "Failed to fetch ipinfo.json" >&2
+        fi
+        # Store the current IP for future comparison
+        echo "$IPADDR" > /tmp/old.ip
+    fi
     STATUS=$(cat /tmp/status.txt 2>/dev/null || echo "unknown")
     NOW=$(date)
 

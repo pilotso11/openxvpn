@@ -21,7 +21,7 @@ else
 fi
 
 # Save our current network interface
-if ! curl -fsSL -o /tmp/old.ip https://ifconfig.co; then
+if ! curl -fsSL -o /tmp/orig.ip https://ifconfig.co; then
     echo "Failed to fetch original IP address" >&2
     exit 1
 fi

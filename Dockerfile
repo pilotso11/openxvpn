@@ -24,7 +24,6 @@ ENV OPEN_VPN_USER_PASS_PATH=""
 ENV SERVER=""
 ENV LAN="192.168.0.0/16"
 ENV IP2LOCATION_IO_KEY=""
-ENV HTTP_PORT="80"
 
 # Expose status web UI port (mapped to host as needed)
 EXPOSE 80

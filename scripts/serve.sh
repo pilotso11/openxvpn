@@ -10,9 +10,7 @@ if [ -n "${IP2LOCATION_IO_KEY_FILE:-}" ] && [ -f "$IP2LOCATION_IO_KEY_FILE" ]; t
     IP2LOCATION_IO_KEY=$(cat "$IP2LOCATION_IO_KEY_FILE")
 fi
 
-port="${HTTP_PORT:-80}"
-
-mini_httpd -r -d /vpn/web -p ${port} -D &
+mini_httpd -r -d /vpn/web -p 80 -D &
 HTTPD_PID=$!
 
 cleanup() {

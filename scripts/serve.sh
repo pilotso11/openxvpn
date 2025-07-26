@@ -10,6 +10,13 @@ if [ -n "${IP2LOCATION_IO_KEY_FILE:-}" ] && [ -f "$IP2LOCATION_IO_KEY_FILE" ]; t
     IP2LOCATION_IO_KEY=$(cat "$IP2LOCATION_IO_KEY_FILE")
 fi
 
+if [ -z "${IP2LOCATION_IO_KEY:-}" ]; then
+    echo "IP2LOCATION_IO_KEY and IP2LOCATION_IO_KEY_FILE are not set or empty" >&2
+    IPKEY=""
+else
+    IPKEY="key=${IP2LOCATION_IO_KEY}"
+fi
+
 mini_httpd -r -d /vpn/web -p 80 -D &
 HTTPD_PID=$!
 
@@ -27,7 +34,7 @@ while true; do
 
     # Fetch IP info JSON only if IP has changed or it's the first run
     if [ "$IPADDR" != "$OLDIP" ]; then
-        if ! curl -fsSL -o /vpn/web/ipinfo.json https://api.ip2location.io/?key=${IP2LOCATION_IO_KEY} ; then
+        if ! curl -fsSL -o /vpn/web/ip2location.json "https://api.ip2location.io/?${IPKEY}" ; then
             echo "Failed to fetch ipinfo.json" >&2
         fi
         # Store the current IP for future comparison

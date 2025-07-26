@@ -137,7 +137,7 @@
                     class="error-message"
                     style="display: none"
                 >
-                    Failed to load /ipinfo.json
+                    Failed to load /ip2location.json
                 </div>
             </section>
             <section>
@@ -149,7 +149,7 @@
                             <a href="status.json">/status.json</a>
                         </li>
                         <li>
-                            <a href="ipinfo.json">/ipinfo.json</a>
+                            <a href="ip2locaion.json">/ip2location.json</a>
                         </li>
                     </ul>
                 </div>
@@ -165,10 +165,10 @@
             })();
 
             // Fetch IP info
-            fetch("/ipinfo.json")
+            fetch("/ip2location.json")
                 .then((response) => {
                     if (!response.ok)
-                        throw new Error("Could not fetch /ipinfo.json");
+                        throw new Error("Could not fetch /ip2location.json");
                     return response.json();
                 })
                 .then((data) => {

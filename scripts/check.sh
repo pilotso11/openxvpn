@@ -4,7 +4,7 @@
 set -euo pipefail
 
 NEW_IP_FILE="/tmp/new.ip"
-OLD_IP_FILE="/tmp/old.ip"
+OLD_IP_FILE="/tmp/orig.ip"
 STATUS_FILE="/tmp/status.txt"
 
 # Fetch new IP, handle curl failure

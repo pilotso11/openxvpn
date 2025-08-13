@@ -519,9 +519,9 @@ func TestIndexEndpoint(t *testing.T) {
 
 	assert.Equal(t, http.StatusOK, w.Code, "Expected status")
 
-	assert.Contains(t, w.Body.String(), "OpenXVPN Status")
+	assert.Contains(t, w.Body.String(), "VPN Status Dashboard")
 	assert.Contains(t, w.Body.String(), "192.0.2.1")
-	assert.Contains(t, w.Body.String(), "connected")
+	assert.Contains(t, w.Body.String(), "CONNECTED")
 
 	contentType := w.Header().Get("Content-Type")
 	assert.Equal(t, "text/html", contentType, "Content-Type")
@@ -1009,10 +1009,10 @@ func TestEdgeCasesAndErrorHandling(t *testing.T) {
 			vpnState    string
 			expectedCSS string
 		}{
-			{"connected", "connected"},
-			{"disconnected", "disconnected"},
+			{"connected", "ok"},
+			{"disconnected", "error"},
 			{"connecting", "connecting"},
-			{"failed", "failed"},
+			{"failed", "error"},
 		}
 
 		for _, tc := range testCases {

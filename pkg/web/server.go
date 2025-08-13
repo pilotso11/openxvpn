@@ -4,9 +4,11 @@ package web
 
 import (
 	"context"
+	_ "embed"
 	"encoding/json"
 	"errors"
 	"fmt"
+	"html/template"
 	"log/slog"
 	"net/http"
 	"strings"
@@ -17,6 +19,9 @@ import (
 	"openxvpn/pkg/ipdetector"
 	"openxvpn/pkg/vpn"
 )
+
+//go:embed templates/index.html
+var indexHTML string
 
 // Server provides HTTP API endpoints for monitoring and managing
 // the VPN connection, health status, and related services.
@@ -387,6 +392,19 @@ func (s *Server) handleCacheClear(w http.ResponseWriter, r *http.Request) {
 	})
 }
 
+// StatusData contains the data passed to the HTML template
+type StatusData struct {
+	Status       string
+	StatusClass  string
+	CurrentIP    string
+	OriginalIP   string
+	Server       string
+	Uptime       string
+	HealthStatus string
+	SuccessRate  float64
+	LastUpdated  string
+}
+
 // handleIndex serves the main HTML status page for web browser access.
 // It provides a user-friendly dashboard displaying VPN connection status, IP addresses,
 // health metrics, and automatically refreshes every 30 seconds for real-time monitoring.
@@ -396,90 +414,46 @@ func (s *Server) handleIndex(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	// Simple status page (HTML)
+	// Get status information
 	vpnStatus := s.vpnManager.GetStatus()
 	healthStatus := s.monitor.GetStatus()
 
-	html := fmt.Sprintf(`<!DOCTYPE html>
-<html>
-<head>
-    <title>OpenXVPN Status</title>
-    <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <style>
-        body { font-family: Arial, sans-serif; margin: 40px; background: #f5f5f5; }
-        .container { max-width: 600px; margin: 0 auto; background: white; padding: 30px; border-radius: 8px; box-shadow: 0 2px 10px rgba(0,0,0,0.1); }
-        .status { font-size: 1.5em; margin-bottom: 20px; padding: 15px; border-radius: 4px; text-align: center; }
-        .connected { background: #d4edda; color: #155724; border: 1px solid #c3e6cb; }
-        .disconnected, .failed { background: #f8d7da; color: #721c24; border: 1px solid #f5c6cb; }
-        .connecting { background: #fff3cd; color: #856404; border: 1px solid #ffeaa7; }
-        .info { display: grid; grid-template-columns: 1fr 1fr; gap: 15px; margin-top: 20px; }
-        .info-item { padding: 15px; background: #f8f9fa; border-radius: 4px; }
-        .info-label { font-weight: bold; color: #495057; }
-        .info-value { margin-top: 5px; font-family: monospace; }
-        .refresh { margin-top: 20px; text-align: center; }
-        .refresh button { padding: 10px 20px; background: #007bff; color: white; border: none; border-radius: 4px; cursor: pointer; }
-        .refresh button:hover { background: #0056b3; }
-    </style>
-    <script>
-        function refreshPage() { window.location.reload(); }
-        setTimeout(refreshPage, 30000); // Auto-refresh every 30 seconds
-    </script>
-</head>
-<body>
-    <div class="container">
-        <h1>OpenXVPN Status</h1>
-        <div class="status %s">
-            VPN Status: %s
-        </div>
-        <div class="info">
-            <div class="info-item">
-                <div class="info-label">Current IP</div>
-                <div class="info-value">%s</div>
-            </div>
-            <div class="info-item">
-                <div class="info-label">Original IP</div>
-                <div class="info-value">%s</div>
-            </div>
-            <div class="info-item">
-                <div class="info-label">Server</div>
-                <div class="info-value">%s</div>
-            </div>
-            <div class="info-item">
-                <div class="info-label">Uptime</div>
-                <div class="info-value">%s</div>
-            </div>
-            <div class="info-item">
-                <div class="info-label">Health Status</div>
-                <div class="info-value">%s</div>
-            </div>
-            <div class="info-item">
-                <div class="info-label">Success Rate</div>
-                <div class="info-value">%.1f%%</div>
-            </div>
-        </div>
-        <div class="refresh">
-            <button onclick="refreshPage()">Refresh Now</button>
-        </div>
-        <div style="margin-top: 20px; text-align: center; color: #6c757d; font-size: 0.9em;">
-            API: <a href="/api/v1/status">/api/v1/status</a> | 
-            Health: <a href="/health">/health</a>
-        </div>
-    </div>
-</body>
-</html>`,
-		vpnStatus.State,
-		strings.ToUpper(vpnStatus.State),
-		vpnStatus.CurrentIP,
-		vpnStatus.OriginalIP,
-		vpnStatus.Server,
-		vpnStatus.Uptime,
-		healthStatus.Status,
-		healthStatus.SuccessRate,
-	)
+	// Determine status class for CSS styling
+	statusClass := "error"
+	switch strings.ToLower(vpnStatus.State) {
+	case "connected":
+		statusClass = "ok"
+	case "connecting":
+		statusClass = "connecting"
+	}
+
+	// Prepare template data
+	data := StatusData{
+		Status:       strings.ToUpper(vpnStatus.State),
+		StatusClass:  statusClass,
+		CurrentIP:    vpnStatus.CurrentIP,
+		OriginalIP:   vpnStatus.OriginalIP,
+		Server:       vpnStatus.Server,
+		Uptime:       vpnStatus.Uptime,
+		HealthStatus: healthStatus.Status,
+		SuccessRate:  healthStatus.SuccessRate,
+		LastUpdated:  time.Now().Format("2006-01-02 15:04:05"),
+	}
+
+	// Parse and execute template
+	tmpl, err := template.New("index").Parse(indexHTML)
+	if err != nil {
+		s.logger.Error("Failed to parse template", "error", err)
+		http.Error(w, "Internal server error", http.StatusInternalServerError)
+		return
+	}
 
 	w.Header().Set("Content-Type", "text/html")
-	_, _ = w.Write([]byte(html))
+	if err := tmpl.Execute(w, data); err != nil {
+		s.logger.Error("Failed to execute template", "error", err)
+		http.Error(w, "Internal server error", http.StatusInternalServerError)
+		return
+	}
 }
 
 // withAuth provides authentication middleware for API endpoints.

@@ -151,7 +151,8 @@ func (m *mockTransport) RoundTrip(req *http.Request) (*http.Response, error) {
 	// Redirect all IP detection sources to our test server
 	if (strings.Contains(req.URL.Host, "ifconfig.co") ||
 		strings.Contains(req.URL.Host, "wtfismyip.com") ||
-		strings.Contains(req.URL.Host, "icanhazip.com")) && m.testServerURL != "" {
+		strings.Contains(req.URL.Host, "icanhazip.com") ||
+		strings.Contains(req.URL.Host, "ip.me")) && m.testServerURL != "" {
 		// Redirect IP detection services to our test server
 		newURL := fmt.Sprintf("%s%s", m.testServerURL, req.URL.Path)
 		newReq, err := http.NewRequestWithContext(req.Context(), req.Method, newURL, req.Body)
@@ -1041,7 +1042,7 @@ func TestContextCancellation(t *testing.T) {
 func TestTimeoutHandling(t *testing.T) {
 	// Test timeout handling with slow server
 	slowServer := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		time.Sleep(100 * time.Millisecond) // Slow response
+		time.Sleep(200 * time.Millisecond) // Slow response - much longer than timeout
 		w.Write([]byte("192.0.2.1"))
 	}))
 	defer slowServer.Close()

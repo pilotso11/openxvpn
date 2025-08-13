@@ -180,7 +180,7 @@ func (d *DetectorImpl) GetCurrentIP(ctx context.Context) (string, error) {
 		"https://ifconfig.co",
 		"https://wtfismyip.com/text",
 		"https://icanhazip.com/",
-		"https:/ip.me/",
+		"https://ip.me/",
 	}
 
 	// Create a shuffled copy of sources for random selection

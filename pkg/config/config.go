@@ -17,6 +17,7 @@ type Config struct {
 	Recovery RecoveryConfig `mapstructure:"recovery"`
 	API      APIConfig      `mapstructure:"api"`
 	Network  NetworkConfig  `mapstructure:"network"`
+	TestMode bool           `mapstructure:"test_mode"`
 }
 
 type VPNConfig struct {
@@ -115,6 +116,9 @@ func Load(configPath string) (*Config, error) {
 	}
 	if openVPNExe := os.Getenv("OPENVPN_EXECUTABLE"); openVPNExe != "" {
 		v.Set("vpn.openvpn_executable", openVPNExe)
+	}
+	if testMode := os.Getenv("TEST_MODE"); testMode != "" {
+		v.Set("test_mode", testMode == "true" || testMode == "1")
 	}
 
 	// Try to read config file (optional)
@@ -227,7 +231,8 @@ func (c *Config) resolveVPNPassword() error {
 
 // Validate checks if the configuration is valid
 func (c *Config) Validate() error {
-	if c.VPN.Username == "" || c.VPN.Password == "" {
+	// Skip VPN credential validation in test mode
+	if !c.TestMode && (c.VPN.Username == "" || c.VPN.Password == "") {
 		return fmt.Errorf("VPN username and password are required")
 	}
 

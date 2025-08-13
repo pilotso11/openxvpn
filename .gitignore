@@ -1,3 +1,4 @@
 *.pw
 /ip2location.io.key
 .idea
+*.out

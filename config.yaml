@@ -1,0 +1,40 @@
+vpn:
+  provider: "expressvpn"
+  config_path: "/vpn/config"
+  username: ""  # Set via OPEN_VPN_USER env var
+  password: ""  # Set via OPEN_VPN_PASSWORD env var
+  password_file: ""  # Path to file containing password, or via OPEN_VPN_PASSWORD_FILE env var
+  server: ""    # Optional server filter
+  timeout: "30s"
+
+health:
+  check_interval: "30s"
+  timeout: "5s"  # 5-second timeout for HTTP calls
+  failure_threshold: 3
+  dns_leak_check: false
+  speed_test:
+    enabled: false
+    interval: "15m"
+    test_sizes: ["1MB", "5MB", "10MB"]
+    max_duration: "30s"
+    randomize_endpoints: true
+    # Select specific built-in endpoints to use (optional)
+    # If not specified or empty, all built-in endpoints will be used
+    # Available options: "ThinkBroadband", "Speedtest.net", "Fast.com Mirror", "Cachefly CDN", "DigitalOcean Speedtest", "Linode Speedtest"
+    selected_endpoints: []
+
+recovery:
+  max_retries: 3
+  restart_delay: "30s"
+  container_exit: true
+
+api:
+  listen: ":80"
+  auth:
+    enabled: false
+    token: ""
+
+network:
+  lan: "192.168.0.0/16"
+  ip2location_key: ""  # Set directly or via IP2LOCATION_IO_KEY env var
+  ip2location_key_file: ""  # Path to file containing API key, or via IP2LOCATION_IO_KEY_FILE env var

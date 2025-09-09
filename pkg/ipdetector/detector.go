@@ -7,6 +7,7 @@ import (
 	"io"
 	"log/slog"
 	"math/rand"
+	"net"
 	"net/http"
 	"strings"
 	"sync"
@@ -175,6 +176,13 @@ func NewDetector(cfg Config) *DetectorImpl {
 func (d *DetectorImpl) GetCurrentIP(ctx context.Context) (string, error) {
 	d.logger.Debug("Fetching current IP address")
 
+	// Check cache first for recent successful IP detection
+	const currentIPCacheKey = "_current_ip"
+	if cached := d.getCachedIPInfo(currentIPCacheKey); cached != nil {
+		d.logger.Debug("Using cached current IP", "ip", cached.IP)
+		return cached.IP, nil
+	}
+
 	// Define available IP detection sources
 	sources := []string{
 		"https://ifconfig.co",
@@ -204,6 +212,14 @@ func (d *DetectorImpl) GetCurrentIP(ctx context.Context) (string, error) {
 		}
 
 		d.logger.Debug("Current IP detected", "ip", ip, "source", source)
+
+		// Cache successful IP detection for 30 seconds to reduce inconsistency
+		ipInfo := &IPInfo{
+			IP:        ip,
+			Timestamp: time.Now(),
+		}
+		d.setCachedIPInfo(currentIPCacheKey, ipInfo, 30*time.Second)
+
 		return ip, nil
 	}
 
@@ -239,7 +255,24 @@ func (d *DetectorImpl) fetchIPFromSource(ctx context.Context, sourceURL string) 
 		return "", fmt.Errorf("empty IP response from %s", sourceURL)
 	}
 
+	// Validate that response looks like an IP address, not HTML
+	if strings.Contains(strings.ToLower(ip), "<html") ||
+		strings.Contains(strings.ToLower(ip), "<!doctype") ||
+		strings.Contains(ip, "<") {
+		return "", fmt.Errorf("received HTML response instead of IP from %s", sourceURL)
+	}
+
+	// Basic IP address validation (IPv4 or IPv6)
+	if !d.isValidIPAddress(ip) {
+		return "", fmt.Errorf("invalid IP address format: %s from %s", ip, sourceURL)
+	}
+
 	return ip, nil
+}
+
+// isValidIPAddress validates that the string is a valid IPv4 or IPv6 address
+func (d *DetectorImpl) isValidIPAddress(ip string) bool {
+	return net.ParseIP(ip) != nil
 }
 
 // GetIPInfo retrieves comprehensive geolocation information for the specified IP address.

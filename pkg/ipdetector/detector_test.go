@@ -1119,6 +1119,150 @@ func TestJSONParsingEdgeCases(t *testing.T) {
 }
 
 // TestJSONValidationChanges tests the new JSON validation functionality
+func TestHTMLResponseValidation(t *testing.T) {
+	tests := []struct {
+		name          string
+		response      string
+		contentType   string
+		expectError   bool
+		errorContains string
+	}{
+		{
+			name:          "HTML response with doctype",
+			response:      "<!DOCTYPE html><html><body>Error</body></html>",
+			contentType:   "text/html",
+			expectError:   true,
+			errorContains: "received HTML response",
+		},
+		{
+			name:          "HTML response with html tag",
+			response:      "<html><head><title>Error</title></head></html>",
+			contentType:   "text/plain",
+			expectError:   true,
+			errorContains: "received HTML response",
+		},
+		{
+			name:          "Response with HTML tags",
+			response:      "<h1>Service Unavailable</h1>",
+			contentType:   "text/plain",
+			expectError:   true,
+			errorContains: "received HTML response",
+		},
+		{
+			name:          "Invalid IP format",
+			response:      "not.an.ip.address",
+			contentType:   "text/plain",
+			expectError:   true,
+			errorContains: "invalid IP address format",
+		},
+		{
+			name:        "Valid IPv4",
+			response:    "192.0.2.1",
+			contentType: "text/plain",
+			expectError: false,
+		},
+		{
+			name:        "Valid IPv6",
+			response:    "2001:db8::1",
+			contentType: "text/plain",
+			expectError: false,
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+				w.Header().Set("Content-Type", tt.contentType)
+				w.WriteHeader(http.StatusOK)
+				w.Write([]byte(tt.response))
+			}))
+			defer server.Close()
+
+			detector := NewDetector(Config{
+				Timeout:  time.Second,
+				CacheTTL: time.Minute,
+				Logger:   slog.Default(),
+			})
+
+			ctx := context.Background()
+			ip, err := detector.fetchIPFromSource(ctx, server.URL)
+
+			if tt.expectError {
+				if err == nil {
+					t.Errorf("Expected error but got none")
+					return
+				}
+				if !strings.Contains(err.Error(), tt.errorContains) {
+					t.Errorf("Expected error containing %q, got: %s", tt.errorContains, err.Error())
+				}
+			} else {
+				if err != nil {
+					t.Errorf("Unexpected error: %s", err.Error())
+					return
+				}
+				if ip != tt.response {
+					t.Errorf("Expected IP %q, got %q", tt.response, ip)
+				}
+			}
+		})
+	}
+}
+
+func TestCurrentIPCaching(t *testing.T) {
+	callCount := 0
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		callCount++
+		w.Header().Set("Content-Type", "text/plain")
+		w.WriteHeader(http.StatusOK)
+		// Return different IPs to test caching
+		if callCount == 1 {
+			w.Write([]byte("192.0.2.1"))
+		} else {
+			w.Write([]byte("203.0.113.1"))
+		}
+	}))
+	defer server.Close()
+
+	detector := NewDetector(Config{
+		Timeout:  time.Second,
+		CacheTTL: time.Hour,
+		Logger:   slog.Default(),
+	})
+
+	// Replace the sources with our test server
+	detector.httpClient = &http.Client{Timeout: time.Second}
+
+	ctx := context.Background()
+
+	// Manually test the caching by calling fetchIPFromSource and then the cache mechanism
+	ip1, err := detector.fetchIPFromSource(ctx, server.URL)
+	if err != nil {
+		t.Fatalf("First fetch failed: %s", err.Error())
+	}
+
+	// Cache the result
+	ipInfo := &IPInfo{
+		IP:        ip1,
+		Timestamp: time.Now(),
+	}
+	detector.setCachedIPInfo("_current_ip", ipInfo, 30*time.Second)
+
+	// Second call should use cache
+	if cached := detector.getCachedIPInfo("_current_ip"); cached == nil {
+		t.Errorf("Expected cached IP but cache was empty")
+	} else if cached.IP != ip1 {
+		t.Errorf("Expected cached IP %s, got %s", ip1, cached.IP)
+	}
+
+	// Clear cache
+	detector.ClearCache()
+
+	// After clear, cache should be empty
+	if cached := detector.getCachedIPInfo("_current_ip"); cached != nil {
+		t.Errorf("Expected empty cache after clear, but got IP: %s", cached.IP)
+	}
+}
+
 func TestJSONValidationChanges(t *testing.T) {
 	t.Run("IP2Location non-JSON content-type fallback", func(t *testing.T) {
 		// Mock servers

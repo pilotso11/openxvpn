@@ -1245,10 +1245,10 @@ func TestCurrentIPCaching(t *testing.T) {
 		IP:        ip1,
 		Timestamp: time.Now(),
 	}
-	detector.setCachedIPInfo("_current_ip", ipInfo, 30*time.Second)
+	detector.setCachedIPInfo(currentIPCacheKey, ipInfo, currentIPCacheDuration)
 
 	// Second call should use cache
-	if cached := detector.getCachedIPInfo("_current_ip"); cached == nil {
+	if cached := detector.getCachedIPInfo(currentIPCacheKey); cached == nil {
 		t.Errorf("Expected cached IP but cache was empty")
 	} else if cached.IP != ip1 {
 		t.Errorf("Expected cached IP %s, got %s", ip1, cached.IP)
@@ -1258,7 +1258,7 @@ func TestCurrentIPCaching(t *testing.T) {
 	detector.ClearCache()
 
 	// After clear, cache should be empty
-	if cached := detector.getCachedIPInfo("_current_ip"); cached != nil {
+	if cached := detector.getCachedIPInfo(currentIPCacheKey); cached != nil {
 		t.Errorf("Expected empty cache after clear, but got IP: %s", cached.IP)
 	}
 }

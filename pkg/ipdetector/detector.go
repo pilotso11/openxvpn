@@ -94,6 +94,16 @@ type CachedIPInfo struct {
 
 var _ Detector = (*DetectorImpl)(nil)
 
+// Cache constants for IP detection
+const (
+	// currentIPCacheKey is the cache key used for storing the current IP address
+	currentIPCacheKey = "_current_ip"
+
+	// currentIPCacheDuration is how long to cache successful IP detection results
+	// This reduces inconsistency from concurrent requests to different services
+	currentIPCacheDuration = 30 * time.Second
+)
+
 // Detector defines the interface for IP address detection and geolocation services.
 // It provides methods for obtaining current external IP, detailed geolocation info,
 // change detection, and cache management. Implementations should be thread-safe.
@@ -177,7 +187,6 @@ func (d *DetectorImpl) GetCurrentIP(ctx context.Context) (string, error) {
 	d.logger.Debug("Fetching current IP address")
 
 	// Check cache first for recent successful IP detection
-	const currentIPCacheKey = "_current_ip"
 	if cached := d.getCachedIPInfo(currentIPCacheKey); cached != nil {
 		d.logger.Debug("Using cached current IP", "ip", cached.IP)
 		return cached.IP, nil
@@ -213,12 +222,12 @@ func (d *DetectorImpl) GetCurrentIP(ctx context.Context) (string, error) {
 
 		d.logger.Debug("Current IP detected", "ip", ip, "source", source)
 
-		// Cache successful IP detection for 30 seconds to reduce inconsistency
+		// Cache successful IP detection to reduce inconsistency
 		ipInfo := &IPInfo{
 			IP:        ip,
 			Timestamp: time.Now(),
 		}
-		d.setCachedIPInfo(currentIPCacheKey, ipInfo, 30*time.Second)
+		d.setCachedIPInfo(currentIPCacheKey, ipInfo, currentIPCacheDuration)
 
 		return ip, nil
 	}

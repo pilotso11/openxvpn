@@ -9,6 +9,8 @@ on:
 jobs:
   build:
     runs-on: ubuntu-latest
+    permissions:
+      contents: write
     steps:
       - uses: actions/checkout@v5
 
@@ -36,16 +38,22 @@ jobs:
           files: README.md
 
       - name: Commit coverage badge
-        if: steps.verify-changed-files.outputs.files_changed == 'true' && github.event_name == 'push'
+        if: steps.verify-changed-files.outputs.files_changed == 'true' && github.event_name == 'push' && github.ref_name != 'main'
         run: |
           git config --local user.email "action@github.com"
           git config --local user.name "GitHub Action"
           git add README.md
           git commit -m "chore: Updated coverage badge."
 
-      - name: Push coverage badge
-        if: steps.verify-changed-files.outputs.files_changed == 'true' && github.event_name == 'push'
-        uses: ad-m/github-push-action@master
-        with:
-          github_token: ${{ github.token }}
-          branch: ${{ github.head_ref }}
+      - name: Push coverage badge  
+        if: steps.verify-changed-files.outputs.files_changed == 'true' && github.event_name == 'push' && github.ref_name != 'main'
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          git push origin HEAD:${{ github.ref_name }}
+
+      - name: Coverage badge update skipped (protected branch)
+        if: steps.verify-changed-files.outputs.files_changed == 'true' && github.event_name == 'push' && github.ref_name == 'main'
+        run: |
+          echo "Coverage badge update skipped for protected main branch"
+          echo "Current coverage: $(go tool cover -func=coverage.out | grep total: | awk '{print $3}')"

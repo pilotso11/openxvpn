@@ -1,3 +1,8 @@
 *.pw
 /ip2location.io.key
 .idea
+*.out
+openxvpn
+coverage.html
+out/
+dist/

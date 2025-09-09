@@ -8,7 +8,60 @@ on:
     branches: [main]
 
 jobs:
-  build:
+#  docker-test:
+#    runs-on: ubuntu-latest
+#    steps:
+#      - name: Checkout
+#        uses: actions/checkout@v5
+#
+#      - name: Set up Docker Buildx
+#        uses: docker/setup-buildx-action@v3
+#
+#      - name: Build test image
+#        uses: docker/build-push-action@v6
+#        with:
+#          context: .
+#          load: true
+#          tags: openxvpn:test
+#          cache-from: type=gha
+#          cache-to: type=gha,mode=max
+#
+#      - name: Test Docker image structure
+#        run: |
+#          echo "Testing Docker image structure..."
+#
+#          # Test that required files exist
+#          docker run --rm openxvpn:test test -f /vpn/openxvpn
+#          docker run --rm openxvpn:test test -x /vpn/openxvpn
+#          docker run --rm openxvpn:test test -d /vpn/scripts
+#          docker run --rm openxvpn:test test -f /vpn/scripts/vpn.sh
+#          docker run --rm openxvpn:test test -f /vpn/scripts/check.sh
+#          docker run --rm openxvpn:test test -d /vpn/config
+#          docker run --rm openxvpn:test test -f /vpn/config.yaml
+#
+#          # Test that required tools are installed
+#          docker run --rm openxvpn:test which openvpn
+#          docker run --rm openxvpn:test which curl
+#          docker run --rm openxvpn:test which bash
+#
+#          # Test Go binary version/help
+#          docker run --rm openxvpn:test /vpn/openxvpn --help || true
+#
+#          echo "✅ Docker image structure tests passed"
+#
+#      - name: Test dual implementation support
+#        run: |
+#          echo "Testing dual implementation support..."
+#
+#          # Test Go implementation (default)
+#          timeout 10s docker run --rm openxvpn:test /vpn/openxvpn || true
+#
+#          # Test shell implementation
+#          timeout 10s docker run --rm --entrypoint "/bin/bash" openxvpn:test /vpn/scripts/vpn.sh || true
+#
+#          echo "✅ Dual implementation tests completed"
+
+  docker-build:
     runs-on: ubuntu-latest
     steps:
       - name: Checkout
@@ -36,6 +89,7 @@ jobs:
             type=semver,pattern={{major}}.{{minor}}
             type=semver,pattern={{major}}
             type=sha
+            type=raw,value=latest,enable={{is_default_branch}}
 
       - name: Build and push
         uses: docker/build-push-action@v6
@@ -47,3 +101,12 @@ jobs:
           labels: ${{ steps.meta.outputs.labels }}
           cache-from: type=gha
           cache-to: type=gha,mode=max
+
+      - name: Update Docker Hub description
+        if: github.event_name != 'pull_request'
+        uses: peter-evans/dockerhub-description@v4
+        with:
+          username: ${{ secrets.DOCKERHUB_USERNAME }}
+          password: ${{ secrets.DOCKERHUB_TOKEN }}
+          repository: ${{ github.repository }}
+          short-description: "Lightweight OpenVPN + ExpressVPN Docker image for proxying other services"

@@ -9,7 +9,7 @@ help: ## Show this help message
 
 # Build targets
 build: ## Build the Go binary
-	go build -o openxvpn .
+	go build -o out/openxvpn .
 
 build-all: ## Build for all platforms
 	GOOS=linux GOARCH=amd64 go build -o dist/openxvpn-linux-amd64 .
@@ -29,12 +29,12 @@ test-race: ## Run tests with race detection
 	go test -race ./...
 
 test-coverage: ## Run tests with coverage
-	go test -coverprofile=coverage.out ./...
+	go test -race -covermode=atomic -coverprofile=coverage.out ./...
 	go tool cover -html=coverage.out -o coverage.html
 	go tool cover -func=coverage.out
 
 test-all: ## Run all tests (may fail due to interface issues)
-	go test ./...
+	go test -race ./...
 
 # Quality targets
 fmt: ## Format Go code
@@ -62,8 +62,8 @@ tidy: ## Tidy go modules
 	go mod tidy
 
 clean: ## Clean build artifacts
-	rm -f openxvpn coverage.out coverage.html
-	rm -rf dist/
+	rm -f coverage.out coverage.html
+	rm -rf out/ dist/
 
 # CI targets (used by GitHub Actions)
 ci-test: fmt vet test-race test-coverage ## Run all CI tests

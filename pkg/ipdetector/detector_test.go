@@ -275,10 +275,12 @@ func TestGetIPInfo_WithAPIKey(t *testing.T) {
 				"longitude": 151.2093,
 				"isp": "Test ISP Pty Ltd"
 			}`,
-			expectedCountry: "Australia",
-			expectedCity:    "Sydney",
-			expectedRegion:  "New South Wales",
-			expectedISP:     "Test ISP Pty Ltd",
+			ifconfigStatusCode: http.StatusOK, // Not used since IP2Location succeeds
+			ifconfigResponse:   `{}`,          // Not used since IP2Location succeeds
+			expectedCountry:    "Australia",
+			expectedCity:       "Sydney",
+			expectedRegion:     "New South Wales",
+			expectedISP:        "Test ISP Pty Ltd",
 		},
 		{
 			name:                  "IP2Location fails, ifconfig succeeds",
@@ -1275,12 +1277,13 @@ func TestJSONValidationChanges(t *testing.T) {
 		assert.Nil(t, data)
 	})
 
-	t.Run("GetRawIP2LocationData invalid JSON error", func(t *testing.T) {
+	t.Run("GetRawIP2LocationData invalid JSON returned as-is", func(t *testing.T) {
+		invalidJSON := `{"ip": "192.0.2.1", invalid json`
 		mockServer := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 			w.Header().Set("Content-Type", "application/json")
 			w.WriteHeader(http.StatusOK)
 			// Return invalid JSON
-			w.Write([]byte(`{"ip": "192.0.2.1", invalid json`))
+			w.Write([]byte(invalidJSON))
 		}))
 		defer mockServer.Close()
 
@@ -1290,9 +1293,9 @@ func TestJSONValidationChanges(t *testing.T) {
 		ctx := context.Background()
 		data, err := detector.GetRawIP2LocationData(ctx, "192.0.2.1")
 
-		require.Error(t, err)
-		assert.Contains(t, err.Error(), "returned invalid JSON")
-		assert.Nil(t, data)
+		require.NoError(t, err) // No longer validates JSON - returns raw data
+		require.NotNil(t, data)
+		assert.Equal(t, invalidJSON, string(data))
 	})
 
 	t.Run("GetRawIP2LocationData valid JSON success", func(t *testing.T) {

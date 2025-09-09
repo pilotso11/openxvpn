@@ -34,6 +34,9 @@
             .status.ok {
                 color: #28a745;
             }
+            .status.connecting {
+                color: #ffc107;
+            }
             .status.error {
                 color: #dc3545;
             }
@@ -156,13 +159,7 @@
             </section>
         </main>
         <script>
-            // Set status color
-            (function () {
-                var status = "{{.Status}}".toLowerCase();
-                var el = document.querySelector(".status");
-                if (status === "ok") el.classList.add("ok");
-                else el.classList.add("error");
-            })();
+            // Status class is already set by Go template via {{.StatusClass}}
 
             // Fetch IP info
             fetch("/ip2location.json")

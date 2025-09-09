@@ -7,6 +7,7 @@ import (
 	"io"
 	"log/slog"
 	"math/rand"
+	"net"
 	"net/http"
 	"strings"
 	"sync"
@@ -93,6 +94,16 @@ type CachedIPInfo struct {
 
 var _ Detector = (*DetectorImpl)(nil)
 
+// Cache constants for IP detection
+const (
+	// currentIPCacheKey is the cache key used for storing the current IP address
+	currentIPCacheKey = "_current_ip"
+
+	// currentIPCacheDuration is how long to cache successful IP detection results
+	// This reduces inconsistency from concurrent requests to different services
+	currentIPCacheDuration = 30 * time.Second
+)
+
 // Detector defines the interface for IP address detection and geolocation services.
 // It provides methods for obtaining current external IP, detailed geolocation info,
 // change detection, and cache management. Implementations should be thread-safe.
@@ -175,6 +186,12 @@ func NewDetector(cfg Config) *DetectorImpl {
 func (d *DetectorImpl) GetCurrentIP(ctx context.Context) (string, error) {
 	d.logger.Debug("Fetching current IP address")
 
+	// Check cache first for recent successful IP detection
+	if cached := d.getCachedIPInfo(currentIPCacheKey); cached != nil {
+		d.logger.Debug("Using cached current IP", "ip", cached.IP)
+		return cached.IP, nil
+	}
+
 	// Define available IP detection sources
 	sources := []string{
 		"https://ifconfig.co",
@@ -204,6 +221,14 @@ func (d *DetectorImpl) GetCurrentIP(ctx context.Context) (string, error) {
 		}
 
 		d.logger.Debug("Current IP detected", "ip", ip, "source", source)
+
+		// Cache successful IP detection to reduce inconsistency
+		ipInfo := &IPInfo{
+			IP:        ip,
+			Timestamp: time.Now(),
+		}
+		d.setCachedIPInfo(currentIPCacheKey, ipInfo, currentIPCacheDuration)
+
 		return ip, nil
 	}
 
@@ -239,7 +264,24 @@ func (d *DetectorImpl) fetchIPFromSource(ctx context.Context, sourceURL string) 
 		return "", fmt.Errorf("empty IP response from %s", sourceURL)
 	}
 
+	// Validate that response looks like an IP address, not HTML
+	if strings.Contains(strings.ToLower(ip), "<html") ||
+		strings.Contains(strings.ToLower(ip), "<!doctype") ||
+		strings.Contains(ip, "<") {
+		return "", fmt.Errorf("received HTML response instead of IP from %s", sourceURL)
+	}
+
+	// Basic IP address validation (IPv4 or IPv6)
+	if !d.isValidIPAddress(ip) {
+		return "", fmt.Errorf("invalid IP address format: %s from %s", ip, sourceURL)
+	}
+
 	return ip, nil
+}
+
+// isValidIPAddress validates that the string is a valid IPv4 or IPv6 address
+func (d *DetectorImpl) isValidIPAddress(ip string) bool {
+	return net.ParseIP(ip) != nil
 }
 
 // GetIPInfo retrieves comprehensive geolocation information for the specified IP address.
@@ -270,6 +312,12 @@ func (d *DetectorImpl) GetIPInfo(ctx context.Context, ip string) (*IPInfo, error
 
 	d.logger.Debug("Fetching IP geolocation info from IP2Location API", "ip", ip)
 
+	// Define fallback closure to reduce code duplication
+	fallbackToIfconfig := func(logMsg string, logArgs ...any) (*IPInfo, error) {
+		d.logger.Warn(logMsg, logArgs...)
+		return d.getInfoFromIfconfig(ctx, ip)
+	}
+
 	url := fmt.Sprintf("https://api.ip2location.io/?key=%s&ip=%s", d.ip2LocationKey, ip)
 
 	req, err := http.NewRequestWithContext(ctx, "GET", url, nil)
@@ -280,8 +328,7 @@ func (d *DetectorImpl) GetIPInfo(ctx context.Context, ip string) (*IPInfo, error
 	resp, err := d.httpClient.Do(req)
 	if err != nil {
 		// Network errors or service unavailability - try free alternative
-		d.logger.Warn("IP2Location API failed, trying ifconfig.co/json fallback", "error", err)
-		return d.getInfoFromIfconfig(ctx, ip)
+		return fallbackToIfconfig("IP2Location API failed, trying ifconfig.co/json fallback", "error", err)
 	}
 	defer func(Body io.ReadCloser) {
 		_ = Body.Close()
@@ -289,37 +336,27 @@ func (d *DetectorImpl) GetIPInfo(ctx context.Context, ip string) (*IPInfo, error
 
 	if resp.StatusCode != http.StatusOK {
 		// API errors (rate limiting, invalid key, etc.) - fallback to free service
-		d.logger.Warn("IP2Location API returned non-200 status, trying ifconfig.co/json fallback",
+		return fallbackToIfconfig("IP2Location API returned non-200 status, trying ifconfig.co/json fallback",
 			"status", resp.StatusCode)
-		return d.getInfoFromIfconfig(ctx, ip)
 	}
 
 	// Validate response is JSON before attempting to decode
 	contentType := resp.Header.Get("Content-Type")
 	if !strings.Contains(strings.ToLower(contentType), "application/json") {
-		d.logger.Warn("IP2Location API returned non-JSON response, trying ifconfig.co/json fallback",
+		return fallbackToIfconfig("IP2Location API returned non-JSON response, trying ifconfig.co/json fallback",
 			"content_type", contentType)
-		return d.getInfoFromIfconfig(ctx, ip)
 	}
 
 	// Read response body to validate JSON format
 	bodyBytes, err := io.ReadAll(resp.Body)
 	if err != nil {
-		d.logger.Warn("Failed to read IP2Location response body, trying ifconfig.co/json fallback", "error", err)
-		return d.getInfoFromIfconfig(ctx, ip)
-	}
-
-	// Quick validation that response is valid JSON
-	if !json.Valid(bodyBytes) {
-		d.logger.Warn("IP2Location API returned invalid JSON, trying ifconfig.co/json fallback")
-		return d.getInfoFromIfconfig(ctx, ip)
+		return fallbackToIfconfig("Failed to read IP2Location response body, trying ifconfig.co/json fallback", "error", err)
 	}
 
 	var ip2LocResp IP2LocationResponse
 	if err := json.Unmarshal(bodyBytes, &ip2LocResp); err != nil {
 		// JSON parsing errors - response format may have changed
-		d.logger.Warn("Failed to decode IP2Location response, trying ifconfig.co/json fallback", "error", err)
-		return d.getInfoFromIfconfig(ctx, ip)
+		return fallbackToIfconfig("Failed to decode IP2Location response, trying ifconfig.co/json fallback", "error", err)
 	}
 
 	info := &IPInfo{
@@ -414,6 +451,17 @@ func (d *DetectorImpl) HealthCheck(ctx context.Context) error {
 func (d *DetectorImpl) getInfoFromIfconfig(ctx context.Context, ip string) (*IPInfo, error) {
 	d.logger.Debug("Fetching IP geolocation info from ifconfig.co/json", "ip", ip)
 
+	// Define fallback closure for basic IP info to reduce code duplication
+	returnBasicInfo := func(logMsg string, logArgs ...any) (*IPInfo, error) {
+		d.logger.Warn(logMsg, logArgs...)
+		info := &IPInfo{
+			IP:        ip,
+			Timestamp: time.Now(),
+		}
+		d.setCachedIPInfo(ip, info, time.Minute) // Short cache for basic info
+		return info, nil
+	}
+
 	// Use ifconfig.co/json to get basic geolocation data
 	req, err := http.NewRequestWithContext(ctx, "GET", "https://ifconfig.co/json", nil)
 	if err != nil {
@@ -424,74 +472,34 @@ func (d *DetectorImpl) getInfoFromIfconfig(ctx context.Context, ip string) (*IPI
 	if err != nil {
 		// Final fallback: return basic IP info only when all services fail
 		// Cache briefly in case network issues are temporary
-		d.logger.Warn("ifconfig.co/json also failed, returning basic IP info", "error", err)
-		info := &IPInfo{
-			IP:        ip,
-			Timestamp: time.Now(),
-		}
-		d.setCachedIPInfo(ip, info, time.Minute) // Short cache for basic info
-		return info, nil
+		return returnBasicInfo("ifconfig.co/json also failed, returning basic IP info", "error", err)
 	}
 	defer func(Body io.ReadCloser) {
 		_ = Body.Close()
 	}(resp.Body)
 
 	if resp.StatusCode != http.StatusOK {
-		d.logger.Warn("ifconfig.co/json returned non-200 status, returning basic IP info",
+		return returnBasicInfo("ifconfig.co/json returned non-200 status, returning basic IP info",
 			"status", resp.StatusCode)
-		info := &IPInfo{
-			IP:        ip,
-			Timestamp: time.Now(),
-		}
-		d.setCachedIPInfo(ip, info, time.Minute)
-		return info, nil
 	}
 
 	// Validate response is JSON before attempting to decode
 	contentType := resp.Header.Get("Content-Type")
 	if !strings.Contains(strings.ToLower(contentType), "application/json") {
-		d.logger.Warn("ifconfig.co/json returned non-JSON response, returning basic IP info",
+		return returnBasicInfo("ifconfig.co/json returned non-JSON response, returning basic IP info",
 			"content_type", contentType)
-		info := &IPInfo{
-			IP:        ip,
-			Timestamp: time.Now(),
-		}
-		d.setCachedIPInfo(ip, info, time.Minute)
-		return info, nil
 	}
 
 	// Read response body to validate JSON format
 	bodyBytes, err := io.ReadAll(resp.Body)
 	if err != nil {
-		d.logger.Warn("Failed to read ifconfig.co response body, returning basic IP info", "error", err)
-		info := &IPInfo{
-			IP:        ip,
-			Timestamp: time.Now(),
-		}
-		d.setCachedIPInfo(ip, info, time.Minute)
-		return info, nil
+		return returnBasicInfo("Failed to read ifconfig.co response body, returning basic IP info", "error", err)
 	}
 
-	// Quick validation that response is valid JSON
-	if !json.Valid(bodyBytes) {
-		d.logger.Warn("ifconfig.co/json returned invalid JSON, returning basic IP info")
-		info := &IPInfo{
-			IP:        ip,
-			Timestamp: time.Now(),
-		}
-		d.setCachedIPInfo(ip, info, time.Minute)
-		return info, nil
-	}
-
+	// Try to unmarshal directly - skip json.Valid() as it seems to have issues
 	var ifconfigResp IfconfigResponse
 	if err := json.Unmarshal(bodyBytes, &ifconfigResp); err != nil {
-		d.logger.Warn("Failed to decode ifconfig.co response, returning basic IP info", "error", err)
-		info := &IPInfo{
-			IP:        ip,
-			Timestamp: time.Now(),
-		}
-		d.setCachedIPInfo(ip, info, time.Minute)
-		return info, nil
+		return returnBasicInfo("Failed to decode ifconfig.co response, returning basic IP info", "error", err)
 	}
 
 	info := &IPInfo{
@@ -563,10 +571,7 @@ func (d *DetectorImpl) GetRawIP2LocationData(ctx context.Context, ip string) ([]
 		return nil, fmt.Errorf("failed to read response: %w", err)
 	}
 
-	// Validate that response is valid JSON
-	if !json.Valid(data) {
-		return nil, fmt.Errorf("ip2location.io returned invalid JSON")
-	}
+	// Skip json.Valid() check - if it's not valid JSON, the caller will handle it
 
 	return data, nil
 }

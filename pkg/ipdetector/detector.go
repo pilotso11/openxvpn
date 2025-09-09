@@ -270,6 +270,12 @@ func (d *DetectorImpl) GetIPInfo(ctx context.Context, ip string) (*IPInfo, error
 
 	d.logger.Debug("Fetching IP geolocation info from IP2Location API", "ip", ip)
 
+	// Define fallback closure to reduce code duplication
+	fallbackToIfconfig := func(logMsg string, logArgs ...any) (*IPInfo, error) {
+		d.logger.Warn(logMsg, logArgs...)
+		return d.getInfoFromIfconfig(ctx, ip)
+	}
+
 	url := fmt.Sprintf("https://api.ip2location.io/?key=%s&ip=%s", d.ip2LocationKey, ip)
 
 	req, err := http.NewRequestWithContext(ctx, "GET", url, nil)
@@ -280,8 +286,7 @@ func (d *DetectorImpl) GetIPInfo(ctx context.Context, ip string) (*IPInfo, error
 	resp, err := d.httpClient.Do(req)
 	if err != nil {
 		// Network errors or service unavailability - try free alternative
-		d.logger.Warn("IP2Location API failed, trying ifconfig.co/json fallback", "error", err)
-		return d.getInfoFromIfconfig(ctx, ip)
+		return fallbackToIfconfig("IP2Location API failed, trying ifconfig.co/json fallback", "error", err)
 	}
 	defer func(Body io.ReadCloser) {
 		_ = Body.Close()
@@ -289,16 +294,27 @@ func (d *DetectorImpl) GetIPInfo(ctx context.Context, ip string) (*IPInfo, error
 
 	if resp.StatusCode != http.StatusOK {
 		// API errors (rate limiting, invalid key, etc.) - fallback to free service
-		d.logger.Warn("IP2Location API returned non-200 status, trying ifconfig.co/json fallback",
+		return fallbackToIfconfig("IP2Location API returned non-200 status, trying ifconfig.co/json fallback",
 			"status", resp.StatusCode)
-		return d.getInfoFromIfconfig(ctx, ip)
+	}
+
+	// Validate response is JSON before attempting to decode
+	contentType := resp.Header.Get("Content-Type")
+	if !strings.Contains(strings.ToLower(contentType), "application/json") {
+		return fallbackToIfconfig("IP2Location API returned non-JSON response, trying ifconfig.co/json fallback",
+			"content_type", contentType)
+	}
+
+	// Read response body to validate JSON format
+	bodyBytes, err := io.ReadAll(resp.Body)
+	if err != nil {
+		return fallbackToIfconfig("Failed to read IP2Location response body, trying ifconfig.co/json fallback", "error", err)
 	}
 
 	var ip2LocResp IP2LocationResponse
-	if err := json.NewDecoder(resp.Body).Decode(&ip2LocResp); err != nil {
+	if err := json.Unmarshal(bodyBytes, &ip2LocResp); err != nil {
 		// JSON parsing errors - response format may have changed
-		d.logger.Warn("Failed to decode IP2Location response, trying ifconfig.co/json fallback", "error", err)
-		return d.getInfoFromIfconfig(ctx, ip)
+		return fallbackToIfconfig("Failed to decode IP2Location response, trying ifconfig.co/json fallback", "error", err)
 	}
 
 	info := &IPInfo{
@@ -393,6 +409,17 @@ func (d *DetectorImpl) HealthCheck(ctx context.Context) error {
 func (d *DetectorImpl) getInfoFromIfconfig(ctx context.Context, ip string) (*IPInfo, error) {
 	d.logger.Debug("Fetching IP geolocation info from ifconfig.co/json", "ip", ip)
 
+	// Define fallback closure for basic IP info to reduce code duplication
+	returnBasicInfo := func(logMsg string, logArgs ...any) (*IPInfo, error) {
+		d.logger.Warn(logMsg, logArgs...)
+		info := &IPInfo{
+			IP:        ip,
+			Timestamp: time.Now(),
+		}
+		d.setCachedIPInfo(ip, info, time.Minute) // Short cache for basic info
+		return info, nil
+	}
+
 	// Use ifconfig.co/json to get basic geolocation data
 	req, err := http.NewRequestWithContext(ctx, "GET", "https://ifconfig.co/json", nil)
 	if err != nil {
@@ -403,38 +430,34 @@ func (d *DetectorImpl) getInfoFromIfconfig(ctx context.Context, ip string) (*IPI
 	if err != nil {
 		// Final fallback: return basic IP info only when all services fail
 		// Cache briefly in case network issues are temporary
-		d.logger.Warn("ifconfig.co/json also failed, returning basic IP info", "error", err)
-		info := &IPInfo{
-			IP:        ip,
-			Timestamp: time.Now(),
-		}
-		d.setCachedIPInfo(ip, info, time.Minute) // Short cache for basic info
-		return info, nil
+		return returnBasicInfo("ifconfig.co/json also failed, returning basic IP info", "error", err)
 	}
 	defer func(Body io.ReadCloser) {
 		_ = Body.Close()
 	}(resp.Body)
 
 	if resp.StatusCode != http.StatusOK {
-		d.logger.Warn("ifconfig.co/json returned non-200 status, returning basic IP info",
+		return returnBasicInfo("ifconfig.co/json returned non-200 status, returning basic IP info",
 			"status", resp.StatusCode)
-		info := &IPInfo{
-			IP:        ip,
-			Timestamp: time.Now(),
-		}
-		d.setCachedIPInfo(ip, info, time.Minute)
-		return info, nil
 	}
 
+	// Validate response is JSON before attempting to decode
+	contentType := resp.Header.Get("Content-Type")
+	if !strings.Contains(strings.ToLower(contentType), "application/json") {
+		return returnBasicInfo("ifconfig.co/json returned non-JSON response, returning basic IP info",
+			"content_type", contentType)
+	}
+
+	// Read response body to validate JSON format
+	bodyBytes, err := io.ReadAll(resp.Body)
+	if err != nil {
+		return returnBasicInfo("Failed to read ifconfig.co response body, returning basic IP info", "error", err)
+	}
+
+	// Try to unmarshal directly - skip json.Valid() as it seems to have issues
 	var ifconfigResp IfconfigResponse
-	if err := json.NewDecoder(resp.Body).Decode(&ifconfigResp); err != nil {
-		d.logger.Warn("Failed to decode ifconfig.co response, returning basic IP info", "error", err)
-		info := &IPInfo{
-			IP:        ip,
-			Timestamp: time.Now(),
-		}
-		d.setCachedIPInfo(ip, info, time.Minute)
-		return info, nil
+	if err := json.Unmarshal(bodyBytes, &ifconfigResp); err != nil {
+		return returnBasicInfo("Failed to decode ifconfig.co response, returning basic IP info", "error", err)
 	}
 
 	info := &IPInfo{
@@ -495,10 +518,18 @@ func (d *DetectorImpl) GetRawIP2LocationData(ctx context.Context, ip string) ([]
 		return nil, fmt.Errorf("HTTP %d from ip2location.io", resp.StatusCode)
 	}
 
+	// Validate response is JSON before returning
+	contentType := resp.Header.Get("Content-Type")
+	if !strings.Contains(strings.ToLower(contentType), "application/json") {
+		return nil, fmt.Errorf("ip2location.io returned non-JSON response: %s", contentType)
+	}
+
 	data, err := io.ReadAll(resp.Body)
 	if err != nil {
 		return nil, fmt.Errorf("failed to read response: %w", err)
 	}
+
+	// Skip json.Valid() check - if it's not valid JSON, the caller will handle it
 
 	return data, nil
 }

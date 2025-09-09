@@ -1115,3 +1115,252 @@ func TestJSONParsingEdgeCases(t *testing.T) {
 		})
 	}
 }
+
+// TestJSONValidationChanges tests the new JSON validation functionality
+func TestJSONValidationChanges(t *testing.T) {
+	t.Run("IP2Location non-JSON content-type fallback", func(t *testing.T) {
+		// Mock servers
+		ip2LocationServer := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+			// Return HTML instead of JSON
+			w.Header().Set("Content-Type", "text/html")
+			w.WriteHeader(http.StatusOK)
+			w.Write([]byte("<html><body>Error page</body></html>"))
+		}))
+		defer ip2LocationServer.Close()
+
+		ifconfigServer := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+			if r.URL.Path == "/json" {
+				w.Header().Set("Content-Type", "application/json")
+				w.WriteHeader(http.StatusOK)
+				w.Write([]byte(`{
+					"ip": "192.0.2.1",
+					"country": "Australia",
+					"city": "Sydney",
+					"asn_org": "Test ISP"
+				}`))
+			}
+		}))
+		defer ifconfigServer.Close()
+
+		detector := createTestDetector()
+		detector = overrideIP2LocationURL(detector, ip2LocationServer.URL)
+		detector = overrideIfconfigURL(detector, ifconfigServer.URL)
+
+		ctx := context.Background()
+		info, err := detector.GetIPInfo(ctx, "192.0.2.1")
+
+		require.NoError(t, err)
+		require.NotNil(t, info)
+		assert.Equal(t, "192.0.2.1", info.IP)
+		assert.Equal(t, "Australia", info.Country)
+		assert.Equal(t, "Sydney", info.City)
+		assert.Equal(t, "Test ISP", info.ISP)
+	})
+
+	t.Run("IP2Location invalid JSON fallback", func(t *testing.T) {
+		// Mock servers
+		ip2LocationServer := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+			// Return invalid JSON
+			w.Header().Set("Content-Type", "application/json")
+			w.WriteHeader(http.StatusOK)
+			w.Write([]byte(`{"ip": "192.0.2.1", "country": malformed`))
+		}))
+		defer ip2LocationServer.Close()
+
+		ifconfigServer := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+			if r.URL.Path == "/json" {
+				w.Header().Set("Content-Type", "application/json")
+				w.WriteHeader(http.StatusOK)
+				w.Write([]byte(`{
+					"ip": "192.0.2.1",
+					"country": "Australia",
+					"city": "Sydney",
+					"asn_org": "Test ISP"
+				}`))
+			}
+		}))
+		defer ifconfigServer.Close()
+
+		detector := createTestDetector()
+		detector = overrideIP2LocationURL(detector, ip2LocationServer.URL)
+		detector = overrideIfconfigURL(detector, ifconfigServer.URL)
+
+		ctx := context.Background()
+		info, err := detector.GetIPInfo(ctx, "192.0.2.1")
+
+		require.NoError(t, err)
+		require.NotNil(t, info)
+		assert.Equal(t, "192.0.2.1", info.IP)
+		assert.Equal(t, "Australia", info.Country)
+		assert.Equal(t, "Sydney", info.City)
+		assert.Equal(t, "Test ISP", info.ISP)
+	})
+
+	t.Run("ifconfig.co non-JSON content-type fallback", func(t *testing.T) {
+		ifconfigServer := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+			if r.URL.Path == "/json" {
+				// Return plain text instead of JSON
+				w.Header().Set("Content-Type", "text/plain")
+				w.WriteHeader(http.StatusOK)
+				w.Write([]byte("192.0.2.1"))
+			}
+		}))
+		defer ifconfigServer.Close()
+
+		detector := NewDetector(Config{
+			Timeout: 5 * time.Second,
+			Logger:  slog.Default(),
+		})
+		detector = overrideIfconfigURL(detector, ifconfigServer.URL)
+
+		ctx := context.Background()
+		info, err := detector.GetIPInfo(ctx, "192.0.2.1")
+
+		require.NoError(t, err)
+		require.NotNil(t, info)
+		assert.Equal(t, "192.0.2.1", info.IP)
+		// Should fall back to basic IP info when content-type is not JSON
+		assert.Empty(t, info.Country)
+		assert.Empty(t, info.City)
+		assert.False(t, info.Timestamp.IsZero())
+	})
+
+	t.Run("ifconfig.co invalid JSON fallback", func(t *testing.T) {
+		ifconfigServer := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+			if r.URL.Path == "/json" {
+				w.Header().Set("Content-Type", "application/json")
+				w.WriteHeader(http.StatusOK)
+				// Return invalid JSON
+				w.Write([]byte(`{"ip": "192.0.2.1", invalid json`))
+			}
+		}))
+		defer ifconfigServer.Close()
+
+		detector := NewDetector(Config{
+			Timeout: 5 * time.Second,
+			Logger:  slog.Default(),
+		})
+		detector = overrideIfconfigURL(detector, ifconfigServer.URL)
+
+		ctx := context.Background()
+		info, err := detector.GetIPInfo(ctx, "192.0.2.1")
+
+		require.NoError(t, err)
+		require.NotNil(t, info)
+		assert.Equal(t, "192.0.2.1", info.IP)
+		// Should fall back to basic IP info when JSON is invalid
+		assert.Empty(t, info.Country)
+		assert.Empty(t, info.City)
+		assert.False(t, info.Timestamp.IsZero())
+	})
+
+	t.Run("GetRawIP2LocationData non-JSON content-type error", func(t *testing.T) {
+		mockServer := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+			// Return HTML instead of JSON
+			w.Header().Set("Content-Type", "text/html")
+			w.WriteHeader(http.StatusOK)
+			w.Write([]byte("<html><body>Error page</body></html>"))
+		}))
+		defer mockServer.Close()
+
+		detector := createTestDetector()
+		detector = overrideIP2LocationURL(detector, mockServer.URL)
+
+		ctx := context.Background()
+		data, err := detector.GetRawIP2LocationData(ctx, "192.0.2.1")
+
+		require.Error(t, err)
+		assert.Contains(t, err.Error(), "returned non-JSON response")
+		assert.Contains(t, err.Error(), "text/html")
+		assert.Nil(t, data)
+	})
+
+	t.Run("GetRawIP2LocationData invalid JSON error", func(t *testing.T) {
+		mockServer := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+			w.Header().Set("Content-Type", "application/json")
+			w.WriteHeader(http.StatusOK)
+			// Return invalid JSON
+			w.Write([]byte(`{"ip": "192.0.2.1", invalid json`))
+		}))
+		defer mockServer.Close()
+
+		detector := createTestDetector()
+		detector = overrideIP2LocationURL(detector, mockServer.URL)
+
+		ctx := context.Background()
+		data, err := detector.GetRawIP2LocationData(ctx, "192.0.2.1")
+
+		require.Error(t, err)
+		assert.Contains(t, err.Error(), "returned invalid JSON")
+		assert.Nil(t, data)
+	})
+
+	t.Run("GetRawIP2LocationData valid JSON success", func(t *testing.T) {
+		validJSON := `{
+			"ip": "192.0.2.1",
+			"country_name": "Australia",
+			"city_name": "Sydney",
+			"isp": "Test ISP"
+		}`
+
+		mockServer := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+			w.Header().Set("Content-Type", "application/json")
+			w.WriteHeader(http.StatusOK)
+			w.Write([]byte(validJSON))
+		}))
+		defer mockServer.Close()
+
+		detector := createTestDetector()
+		detector = overrideIP2LocationURL(detector, mockServer.URL)
+
+		ctx := context.Background()
+		data, err := detector.GetRawIP2LocationData(ctx, "192.0.2.1")
+
+		require.NoError(t, err)
+		require.NotNil(t, data)
+
+		// Verify the returned data is valid JSON
+		var result map[string]interface{}
+		err = json.Unmarshal(data, &result)
+		require.NoError(t, err)
+		assert.Equal(t, "192.0.2.1", result["ip"])
+		assert.Equal(t, "Australia", result["country_name"])
+		assert.Equal(t, "Sydney", result["city_name"])
+		assert.Equal(t, "Test ISP", result["isp"])
+	})
+
+	t.Run("both services return non-JSON - fallback to basic IP info", func(t *testing.T) {
+		// Both servers return HTML error pages
+		ip2LocationServer := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+			w.Header().Set("Content-Type", "text/html")
+			w.WriteHeader(http.StatusOK)
+			w.Write([]byte("<html><body>IP2Location Error</body></html>"))
+		}))
+		defer ip2LocationServer.Close()
+
+		ifconfigServer := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+			if r.URL.Path == "/json" {
+				w.Header().Set("Content-Type", "text/html")
+				w.WriteHeader(http.StatusOK)
+				w.Write([]byte("<html><body>ifconfig Error</body></html>"))
+			}
+		}))
+		defer ifconfigServer.Close()
+
+		detector := createTestDetector()
+		detector = overrideIP2LocationURL(detector, ip2LocationServer.URL)
+		detector = overrideIfconfigURL(detector, ifconfigServer.URL)
+
+		ctx := context.Background()
+		info, err := detector.GetIPInfo(ctx, "192.0.2.1")
+
+		require.NoError(t, err)
+		require.NotNil(t, info)
+		assert.Equal(t, "192.0.2.1", info.IP)
+		// Should fall back to basic IP info when both services fail
+		assert.Empty(t, info.Country)
+		assert.Empty(t, info.City)
+		assert.Empty(t, info.ISP)
+		assert.False(t, info.Timestamp.IsZero())
+	})
+}

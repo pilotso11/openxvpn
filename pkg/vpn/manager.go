@@ -433,17 +433,54 @@ func (m *ManagerImpl) startVPN(ctx context.Context) error {
 		}
 	}()
 
-	// Give OpenVPN time to establish connection
-	time.Sleep(2 * time.Second)
-
-	// Check if process failed during startup
-	if State(m.state.Load()) == StateFailed {
-		return fmt.Errorf("OpenVPN process failed to start properly")
+	// Wait for OpenVPN to establish connection by monitoring process state
+	// and verifying connection status instead of using fixed sleep
+	if err := m.waitForConnection(ctx); err != nil {
+		return fmt.Errorf("OpenVPN failed to establish connection: %w", err)
 	}
 
 	m.setState(StateConnected)
 
 	return nil
+}
+
+// waitForConnection waits for the OpenVPN process to establish a connection by monitoring
+// the process state and attempting to verify network connectivity. This replaces the fixed
+// sleep with proper connection state verification.
+func (m *ManagerImpl) waitForConnection(ctx context.Context) error {
+	m.logger.Debug("Waiting for OpenVPN connection to establish")
+
+	ticker := time.NewTicker(1 * time.Second)
+	defer ticker.Stop()
+
+	timeout := time.After(30 * time.Second)
+
+	for {
+		select {
+		case <-ctx.Done():
+			return ctx.Err()
+		case <-timeout:
+			return fmt.Errorf("timeout waiting for OpenVPN connection")
+		case <-ticker.C:
+			// Check if process failed
+			if State(m.state.Load()) == StateFailed {
+				return fmt.Errorf("OpenVPN process failed during startup")
+			}
+
+			// Try to get current IP to verify connectivity
+			// Use a short timeout for this check
+			checkCtx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+			if _, err := m.ipDetector.GetCurrentIP(checkCtx); err == nil {
+				cancel()
+				// Successfully got IP, connection is likely established
+				m.logger.Info("OpenVPN connection verified")
+				return nil
+			}
+			cancel()
+
+			m.logger.Debug("OpenVPN connection not ready yet, continuing to wait")
+		}
+	}
 }
 
 // createCredentialsFile creates a temporary file containing VPN authentication credentials

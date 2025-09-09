@@ -565,7 +565,7 @@ MOCK_FAIL
 
 	err = manager.Start(ctx)
 	assert.Error(t, err, "Expected error when mock OpenVPN fails")
-	assert.Contains(t, err.Error(), "OpenVPN process failed to start properly", "Expected OpenVPN start error")
+	assert.Contains(t, err.Error(), "OpenVPN failed to establish connection", "Expected OpenVPN start error")
 }
 
 func TestManagerImpl_E2E_Restart(t *testing.T) {

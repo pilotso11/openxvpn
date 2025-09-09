@@ -151,6 +151,37 @@ func (app *Application) run() error {
 	return nil
 }
 
+// waitForVPNReady waits for the VPN to reach a stable state before proceeding.
+// This replaces the fixed sleep with proper synchronization based on VPN status.
+func (app *Application) waitForVPNReady() {
+	app.logger.Info("Waiting for VPN to be ready")
+
+	ticker := time.NewTicker(2 * time.Second)
+	defer ticker.Stop()
+
+	timeout := time.After(30 * time.Second)
+
+	for {
+		select {
+		case <-app.ctx.Done():
+			app.logger.Info("Context cancelled while waiting for VPN")
+			return
+		case <-timeout:
+			app.logger.Warn("Timeout waiting for VPN to be ready, proceeding anyway")
+			return
+		case <-ticker.C:
+			status := app.vpnManager.GetStatus()
+			if status.State == "connected" || status.State == "connecting" {
+				app.logger.Info("VPN is ready", "state", status.State)
+				// Give it a moment to stabilize
+				time.Sleep(2 * time.Second)
+				return
+			}
+			app.logger.Debug("VPN not ready yet", "state", status.State)
+		}
+	}
+}
+
 func (app *Application) startComponents(wg *sync.WaitGroup) error {
 	app.logger.Info("Starting application components")
 
@@ -164,8 +195,8 @@ func (app *Application) startComponents(wg *sync.WaitGroup) error {
 		}
 	}()
 
-	// Give VPN time to start before starting health monitor
-	time.Sleep(10 * time.Second)
+	// Wait for VPN to be ready before starting health monitor
+	app.waitForVPNReady()
 
 	// Start health monitor
 	wg.Add(1)

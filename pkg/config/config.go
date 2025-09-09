@@ -173,7 +173,6 @@ func setDefaults(v *viper.Viper) {
 	v.SetDefault("recovery.container_exit", true)
 
 	v.SetDefault("api.listen", ":80")
-	v.SetDefault("api.enable_tls", false)
 	v.SetDefault("api.auth.enabled", false)
 
 	v.SetDefault("network.lan", "192.168.0.0/16")

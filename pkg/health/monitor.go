@@ -217,47 +217,61 @@ func (m *MonitorImpl) runHealthCheck() {
 	start := time.Now()
 	currentIP, originalIP, err := m.performHealthCheck()
 
-	m.mu.Lock()
-	defer m.mu.Unlock()
+	// Prepare values to update
+	var shouldTriggerCallbacks bool
+	var consecutiveFails int
 
-	m.status.LastCheck = start
-	m.status.TotalChecks++
+	// Critical section - minimize mutex holding time
+	func() {
+		m.mu.Lock()
+		defer m.mu.Unlock()
 
+		m.status.LastCheck = start
+		m.status.TotalChecks++
+
+		if err != nil {
+			m.status.Status = "unhealthy"
+			m.failureCount++
+			m.status.ConsecutiveFails++
+			consecutiveFails = m.status.ConsecutiveFails
+
+			// Check if we've exceeded failure threshold
+			if m.status.ConsecutiveFails >= m.config.Health.FailureThreshold {
+				shouldTriggerCallbacks = true
+			}
+		} else {
+			m.status.Status = "healthy"
+			m.successCount++
+			m.status.ConsecutiveFails = 0
+
+			// Update IP information
+			m.status.CurrentIP = currentIP
+			m.status.OriginalIP = originalIP
+		}
+
+		// Update success rate
+		if m.status.TotalChecks > 0 {
+			m.status.SuccessRate = float64(m.successCount) / float64(m.status.TotalChecks) * 100
+		}
+	}()
+
+	// Handle expensive operations outside the mutex
 	if err != nil {
 		m.logger.Warn("Health check failed", "error", err)
-		m.status.Status = "unhealthy"
-		m.failureCount++
-		m.status.ConsecutiveFails++
-
-		// Check if we've exceeded failure threshold
-		if m.status.ConsecutiveFails >= m.config.Health.FailureThreshold {
+		if shouldTriggerCallbacks {
 			m.logger.Error("Health check failure threshold exceeded",
-				"consecutive_fails", m.status.ConsecutiveFails,
+				"consecutive_fails", consecutiveFails,
 				"threshold", m.config.Health.FailureThreshold)
 
-			// Trigger failure callbacks
+			// Trigger failure callbacks outside the mutex
 			m.triggerFailureCallbacks()
 		}
 	} else {
 		m.logger.Debug("Health check passed")
-		m.status.Status = "healthy"
-		m.successCount++
-		m.status.ConsecutiveFails = 0
-
-		// Update IP information under mutex lock (race condition fix)
-		m.status.CurrentIP = currentIP
-		m.status.OriginalIP = originalIP
-	}
-
-	// Update success rate
-	if m.status.TotalChecks > 0 {
-		m.status.SuccessRate = float64(m.successCount) / float64(m.status.TotalChecks) * 100
 	}
 
 	m.logger.Debug("Health check completed",
-		"status", m.status.Status,
-		"duration", time.Since(start),
-		"success_rate", m.status.SuccessRate)
+		"duration", time.Since(start))
 }
 
 // performHealthCheck does the actual health verification

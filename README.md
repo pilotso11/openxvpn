@@ -146,10 +146,10 @@ services:
 | `OPEN_VPN_USER`    | One-Of      | Your ExpressVPN username                                                    |
 | `OPEN_VPN_PASSWORD`| One-Of      | Your ExpressVPN password                                                    |
 | `OPEN_VPN_USER_PASS_PATH`| One-Of      | Path to a file containing your ExpressVPN username and password on two lines (e.g., `/path/to/userpass.txt`) |
-| `SERVER`           | No       | Partial string to select a specific `.ovpn` config (e.g., `sydney`, `usa`)  |
-| `LAN`              | Recommended       | Local network CIDR to keep accessible (default: `192.168.0.0/16`)           |
-| `IP2LOCATION_IO_KEY` | No       | IP2Location.io API key for geolocation features                             |
-| `IP2LOCATION_IO_KEY_FILE` | No  | Path to file containing IP2Location.io API key                              |
+| `SERVER`           | No          | Partial string to select a specific `.ovpn` config (e.g., `sydney`, `usa`)  |
+| `LAN`              | Recommended | Local network CIDR to keep accessible (default: `192.168.0.0/16`)           |
+| `IP2LOCATION_IO_KEY` | No        | IP2Location.io API key for geolocation features                             |
+| `IP2LOCATION_IO_KEY_FILE` | No   | Path to file containing IP2Location.io API key                              |
 
 ---
 

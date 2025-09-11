@@ -147,7 +147,7 @@ func (s *Server) Start(ctx context.Context) error {
 
 	// IP geolocation endpoints
 	mux.HandleFunc("/api/v1/ipinfo", s.handleIPInfo)
-	mux.HandleFunc("/ip2location.json", s.handleIP2LocationCompat) // Shell script compatibility
+	mux.HandleFunc("/ip2location.json", s.handleIP2LocationCompat) // Legacy compatibility
 	mux.HandleFunc("/api/v1/cache/stats", s.handleCacheStats)
 	mux.HandleFunc("/api/v1/cache/clear", s.handleCacheClear)
 
@@ -238,7 +238,7 @@ func (s *Server) handleStatus(w http.ResponseWriter, r *http.Request) {
 	_ = json.NewEncoder(w).Encode(response)
 }
 
-// handleLegacyStatus provides backward compatibility with shell script web interface.
+// handleLegacyStatus provides backward compatibility with legacy web interface.
 // It returns a simplified JSON response with basic status information in the format
 // expected by existing monitoring scripts and legacy web interfaces.
 func (s *Server) handleLegacyStatus(w http.ResponseWriter, r *http.Request) {
@@ -250,7 +250,7 @@ func (s *Server) handleLegacyStatus(w http.ResponseWriter, r *http.Request) {
 	vpnStatus := s.vpnManager.GetStatus()
 	healthStatus := s.monitor.GetStatus()
 
-	// Legacy format for compatibility with shell script web interface
+	// Legacy format for compatibility with legacy web interface
 	legacyResponse := map[string]interface{}{
 		"status": healthStatus.Status,
 		"ip":     vpnStatus.CurrentIP,
@@ -336,9 +336,9 @@ func (s *Server) handleIPInfo(w http.ResponseWriter, r *http.Request) {
 	_ = json.NewEncoder(w).Encode(ipInfo)
 }
 
-// handleIP2LocationCompat provides raw IP2Location API compatibility for shell scripts.
+// handleIP2LocationCompat provides raw IP2Location API compatibility for legacy applications.
 // It returns unprocessed JSON data from the IP2Location service, maintaining compatibility
-// with existing shell-based monitoring scripts that expect the original API format.
+// with existing monitoring applications that expect the original API format.
 func (s *Server) handleIP2LocationCompat(w http.ResponseWriter, r *http.Request) {
 	if r.Method != http.MethodGet {
 		http.Error(w, "Method not allowed", http.StatusMethodNotAllowed)
@@ -356,7 +356,7 @@ func (s *Server) handleIP2LocationCompat(w http.ResponseWriter, r *http.Request)
 		return
 	}
 
-	// Get raw IP2Location data for shell script compatibility
+	// Get raw IP2Location data for legacy compatibility
 	rawData, err := s.ipDetector.GetRawIP2LocationData(ctx, currentIP)
 	if err != nil {
 		s.logger.Error("Failed to get IP2Location data", "error", err)

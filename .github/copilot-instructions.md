@@ -1,6 +1,6 @@
-# OpenXVPN - Dual Implementation VPN Container
+# OpenXVPN - Go-Based VPN Container
 
-OpenXVPN is a Docker-based VPN application with dual implementation support: a modern Go application (default) and legacy shell scripts. It integrates with ExpressVPN configurations to provide VPN connectivity for containerized services with advanced monitoring, speed testing, and comprehensive REST APIs.
+OpenXVPN is a Docker-based VPN application built with Go. It integrates with ExpressVPN configurations to provide VPN connectivity for containerized services with advanced monitoring, speed testing, and comprehensive REST APIs.
 
 **ALWAYS reference these instructions first** and fallback to search or bash commands only when you encounter unexpected information that does not match the information here.
 
@@ -30,27 +30,20 @@ OpenXVPN is a Docker-based VPN application with dual implementation support: a m
 - **Test Docker image**: `make docker-test` -- Tests basic image structure
 - **Note**: Docker builds may fail in CI environments due to certificate verification issues with Go proxy
 
-## Dual Implementation Usage
+## Go Implementation Features
 
-### Go Implementation (Default, Recommended)
+### Core Capabilities
 - **Binary location**: `./out/openxvpn` (after `make build`)
-- **Features**: Advanced health monitoring, speed testing, comprehensive REST API, structured JSON logging
+- **Advanced health monitoring** with configurable failure recovery
+- **Speed testing** with multiple endpoints and randomization
+- **Comprehensive REST API** with optional authentication
+- **Structured JSON logging** with credential redaction
 - **Configuration**: Supports both YAML config files and environment variables
 - **Health endpoint**: `/health` (used by Docker health checks)
-- **API endpoints**: `/api/v1/status`, `/api/v1/reconnect`, `/api/v1/speedtest`, etc.
-
-### Shell Implementation (Legacy)
-- **Entry script**: `./scripts/vpn.sh` 
-- **Features**: Basic health checks, simple JSON status, template-based HTML generation
-- **Configuration**: Environment variables only
-- **Health script**: `./scripts/check.sh`
-- **Web server**: `./scripts/serve.sh` (uses mini_httpd + templates)
 
 ### Running the Application
-- **Go mode (local)**: `./out/openxvpn` (requires VPN credentials via env vars)
-- **Shell mode (local)**: `bash ./scripts/vpn.sh` (requires VPN credentials via env vars)
-- **Docker Go mode**: Default entrypoint in Dockerfile
-- **Docker Shell mode**: Override entrypoint to `["/bin/bash", "/vpn/scripts/vpn.sh"]`
+- **Local mode**: `./out/openxvpn` (requires VPN credentials via env vars)
+- **Docker mode**: Default entrypoint in Dockerfile
 
 ## Validation and Testing
 
@@ -60,19 +53,17 @@ OpenXVPN is a Docker-based VPN application with dual implementation support: a m
 1. **Build validation**: `make build && ./out/openxvpn --help`
 2. **Test validation**: `make test-coverage` (verify all tests pass)
 3. **Format validation**: `make fmt && make vet` (verify no formatting/vet issues)
-4. **Shell script validation**: `bash -n ./scripts/*.sh` (verify shell script syntax)
-5. **Configuration validation**: Check that config loading works: `./out/openxvpn` (should fail with config error, not compilation error)
-6. **Docker structure validation** (if modifying Docker): `make docker-build` (may fail due to network restrictions)
+4. **Configuration validation**: Check that config loading works: `./out/openxvpn` (should fail with config error, not compilation error)
+5. **Docker structure validation** (if modifying Docker): `make docker-build` (may fail due to network restrictions)
 
 ### Scenario Validation After Changes
 **ALWAYS test real functionality after any code changes**:
 
 1. **Basic application startup**: Verify app starts and shows expected config error
 2. **API endpoint structure**: Check that Go implementation defines expected routes  
-3. **Shell script compatibility**: Verify scripts have valid syntax with `bash -n`
-4. **Configuration loading**: Test both YAML and environment variable config paths
-5. **Mock testing workflows**: Run tests using internal/testutils mocks for components you modified
-6. **Integration points**: If modifying VPN, health, or web components, test their interaction
+3. **Configuration loading**: Test both YAML and environment variable config paths
+4. **Mock testing workflows**: Run tests using internal/testutils mocks for components you modified
+5. **Integration points**: If modifying VPN, health, or web components, test their interaction
 
 ### Expected Command Behaviors
 - `./out/openxvpn --help`: Shows usage (exits with 1 due to missing VPN credentials)
@@ -84,16 +75,14 @@ OpenXVPN is a Docker-based VPN application with dual implementation support: a m
 
 ### Key Directories
 - `pkg/`: Go packages (config, health, ipdetector, logging, speedtest, vpn, web)
-- `scripts/`: Shell implementation (vpn.sh, check.sh, serve.sh, mock_openvpn.sh)
 - `expressvpn/`: 62 ExpressVPN .ovpn configuration files
-- `web/`: HTML templates for shell implementation (index.html, status.json)
 - `internal/testutils/`: Mock implementations for testing
 - `.github/workflows/`: CI/CD pipelines (go.yml, docker.yml)
 
 ### Important Files
 - `main.go`: Go application entry point with graceful shutdown
 - `config.yaml`: Default configuration with comprehensive options
-- `Dockerfile`: Multi-stage build supporting both implementations
+- `Dockerfile`: Multi-stage build for Go implementation
 - `Makefile`: Build automation with comprehensive targets
 - `go.mod`: Go 1.24 with minimal dependencies (viper, testify)
 
@@ -105,16 +94,13 @@ OpenXVPN is a Docker-based VPN application with dual implementation support: a m
 ## Common Tasks
 
 ### Adding New Features
-1. **Identify implementation**: Determine if feature applies to Go, Shell, or both implementations
-2. **Update Go packages**: Modify appropriate packages in `pkg/` directory
-3. **Update tests**: Add tests to maintain >70% coverage
-4. **Update configuration**: Modify `config.yaml` if new config options needed
-5. **Update shell scripts**: If feature applies to shell implementation
-6. **Validation sequence**: `make fmt && make vet && make test-coverage && make build`
+1. **Update Go packages**: Modify appropriate packages in `pkg/` directory
+2. **Update tests**: Add tests to maintain >70% coverage
+3. **Update configuration**: Modify `config.yaml` if new config options needed
+4. **Validation sequence**: `make fmt && make vet && make test-coverage && make build`
 
 ### Debugging Issues
 - **Go logs**: Structured JSON with credential redaction: `./out/openxvpn 2>&1 | jq .`
-- **Shell logs**: Standard bash output from scripts
 - **Test specific packages**: `go test -v ./pkg/config` (example for config package)
 - **Mock testing**: Use `internal/testutils` mocks for isolated testing
 - **Coverage analysis**: View `coverage.html` after `make test-coverage`
@@ -163,29 +149,29 @@ OpenXVPN is a Docker-based VPN application with dual implementation support: a m
 ### Security Considerations
 - **Credential redaction**: Automatic in structured logging (logging/redactor.go)
 - **Environment variables**: Use `*_FILE` variants for secrets in containers
-- **API authentication**: Optional in Go implementation with health endpoint bypass
+- **API authentication**: Optional with health endpoint bypass
 - **Docker secrets**: Dockerfile includes warnings about sensitive environment variables
 
-## API Reference (Go Implementation)
+## API Reference
 
 ### Health and Status (No Authentication)
 - `GET /health`: Docker health check endpoint
 - `GET /api/v1/status`: Detailed JSON status with metrics
 - `POST /api/v1/healthcheck`: Force immediate health check
+- `GET /status`: Legacy compatibility endpoint
 
 ### Management (Authentication Optional)  
 - `POST /api/v1/reconnect`: Force VPN reconnection
 - `GET /api/v1/ipinfo`: Current IP geolocation
 - `POST /api/v1/cache/clear`: Clear IP cache
+- `GET /ip2location.json`: IP geolocation compatibility endpoint
 
 ### Speed Testing (Authentication Optional)
 - `POST /api/v1/speedtest`: Run immediate speed test
 - `GET /api/v1/speedtest/endpoints`: Available test endpoints
 
-### Shell Implementation API
-- `GET /status.json`: Simple JSON status
-- `GET /ip2location.json`: IP geolocation data
-- `GET /`: HTML status dashboard
+### User Interface
+- `GET /`: HTML status dashboard with real-time metrics
 
 ## Quick Reference Commands
 
@@ -198,9 +184,6 @@ make ci-test
 
 # Build and test specific package  
 go test -v -race ./pkg/config
-
-# Validate shell scripts
-bash -n ./scripts/*.sh
 
 # Build Docker image (may fail in restricted environments)
 make docker-build

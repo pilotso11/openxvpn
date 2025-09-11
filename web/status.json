@@ -1,5 +1,0 @@
-{
-  "status": "%STATUS%",
-  "ip": "%IPADDR%",
-  "at": "%NOW%"
-}

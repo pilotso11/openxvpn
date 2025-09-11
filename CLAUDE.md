@@ -143,14 +143,14 @@ mockIP := testutils.NewMockIPDetector().WithCurrentIP("10.0.0.1")
 - Legacy compatibility: maintain existing `/status` endpoint format
 - Error responses include HTTP status codes and descriptive messages
 
-## Dual Implementation Support
+## Go Implementation
 
-This project supports both Go (default) and shell script implementations:
-- **Go Implementation**: Enhanced features, monitoring, API (default Docker entrypoint)
-- **Shell Scripts**: Legacy compatibility (`/vpn/scripts/vpn.sh`)
-- When modifying core functionality, consider impact on both implementations
-- API endpoints maintain backward compatibility with shell script format
-- Once the go version is working, the intention is to deprecate shell scripts.
+This project is built with Go and provides:
+- Enhanced features, monitoring, and comprehensive API
+- Advanced health monitoring with configurable failure recovery
+- Speed testing with multiple endpoints
+- Structured logging with credential redaction
+- REST API with optional authentication
 ## Common Development Tasks
 
 ### Adding New VPN Features

@@ -420,7 +420,9 @@ func (m *MonitorImpl) RunSpeedTestNow(ctx context.Context) (*speedtest.Result, e
 		if m.metricsCollector != nil {
 			m.metricsCollector.RecordSpeedTestResult(result.SpeedMbps, true)
 		}
-	} else if err != nil {
+	}
+
+	if err != nil {
 		// Record failed speed test in metrics
 		if m.metricsCollector != nil {
 			m.metricsCollector.RecordSpeedTestResult(0.0, false)

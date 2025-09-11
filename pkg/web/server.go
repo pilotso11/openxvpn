@@ -110,17 +110,22 @@ type Reliability struct {
 // NewServer creates a new HTTP server instance with the provided dependencies.
 // The server provides REST API endpoints for VPN management and monitoring.
 func NewServer(cfg *config.Config, vpnMgr vpn.Manager, monitor health.Monitor, logger *slog.Logger) *Server {
+	collector := metrics.NewCollector()
 	server := &Server{
 		config:           cfg,
 		vpnManager:       vpnMgr,
 		monitor:          monitor,
 		logger:           logger,
 		ipDetector:       vpnMgr.GetIPDetector(), // Reuse the VPN manager's IP detector
-		metricsCollector: metrics.NewCollector(),
+		metricsCollector: collector,
 	}
 
-	// Set the metrics collector on the VPN manager and IP detector
-	server.SetMetricsCollector(server.metricsCollector)
+	// Set the metrics collector on all components
+	if detector, ok := server.ipDetector.(*ipdetector.DetectorImpl); ok {
+		detector.SetMetricsCollector(collector)
+	}
+	vpnMgr.SetMetricsCollector(collector)
+	monitor.SetMetricsCollector(collector)
 
 	return server
 }
@@ -574,5 +579,3 @@ func (s *Server) SetMetricsCollector(collector *metrics.Collector) {
 	// Update health monitor with the metrics collector
 	s.monitor.SetMetricsCollector(collector)
 }
-
-// No additional handleStats method needed - it's already defined above

@@ -414,12 +414,12 @@ func (m *MonitorImpl) RunSpeedTestNow(ctx context.Context) (*speedtest.Result, e
 	m.mu.Lock()
 	m.lastSpeedTestTime = time.Now()
 
-	if err != nil {
+	if err != nil || result == nil {
 		// Record failed speed test in metrics
 		if m.metricsCollector != nil {
 			m.metricsCollector.RecordSpeedTestResult(0.0, false)
 		}
-	} else if result != nil {
+	} else {
 		m.status.LastSpeedTest = result
 		// Record successful speed test in metrics
 		if m.metricsCollector != nil {

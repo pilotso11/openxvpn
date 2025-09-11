@@ -18,6 +18,7 @@ import (
 
 	"openxvpn/pkg/config"
 	"openxvpn/pkg/ipdetector"
+	"openxvpn/pkg/metrics"
 )
 
 // State represents the current state of the VPN connection.
@@ -83,6 +84,9 @@ type Manager interface {
 	// GetIPDetector returns the IP detector instance for use by other
 	// components like health monitors.
 	GetIPDetector() ipdetector.Detector
+
+	// SetMetricsCollector sets the metrics collector for tracking VPN events
+	SetMetricsCollector(collector interface{ RecordVPNEvent(eventType string) })
 }
 
 var _ Manager = (*ManagerImpl)(nil)
@@ -114,6 +118,10 @@ type ManagerImpl struct {
 	logger *slog.Logger
 	// ipDetector provides IP address detection and geolocation services
 	ipDetector ipdetector.Detector
+	// metricsCollector tracks VPN events and metrics (optional)
+	metricsCollector interface {
+		RecordVPNEvent(eventType string)
+	}
 }
 
 // Status represents the current state and information about the VPN connection.
@@ -183,6 +191,11 @@ func (m *ManagerImpl) Start(ctx context.Context) error {
 // The method is thread-safe and handles race conditions with the process monitoring goroutine.
 func (m *ManagerImpl) Stop() error {
 	m.setState(StateDisconnected)
+
+	// Record VPN disconnect event in metrics
+	if m.metricsCollector != nil {
+		m.metricsCollector.RecordVPNEvent(metrics.VPNDisconnect)
+	}
 
 	m.mu.Lock()
 	defer m.mu.Unlock()
@@ -268,6 +281,11 @@ func (m *ManagerImpl) GetStatus() Status {
 // If either the stop or start operation fails, an error is returned.
 func (m *ManagerImpl) Restart(ctx context.Context) error {
 	m.logger.Info("Restarting VPN connection")
+
+	// Record VPN reconnect event in metrics
+	if m.metricsCollector != nil {
+		m.metricsCollector.RecordVPNEvent(metrics.VPNReconnect)
+	}
 
 	if err := m.Stop(); err != nil {
 		m.logger.Error("Failed to stop VPN during restart", "error", err)
@@ -441,6 +459,11 @@ func (m *ManagerImpl) startVPN(ctx context.Context) error {
 
 	m.setState(StateConnected)
 
+	// Record VPN connect event in metrics
+	if m.metricsCollector != nil {
+		m.metricsCollector.RecordVPNEvent(metrics.VPNConnect)
+	}
+
 	return nil
 }
 
@@ -526,4 +549,11 @@ func (m *ManagerImpl) GetIPDetector() ipdetector.Detector {
 	m.mu.Lock()
 	defer m.mu.Unlock()
 	return m.ipDetector
+}
+
+// SetMetricsCollector sets the metrics collector for tracking VPN events
+func (m *ManagerImpl) SetMetricsCollector(collector interface{ RecordVPNEvent(eventType string) }) {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+	m.metricsCollector = collector
 }

@@ -76,6 +76,11 @@ type Monitor interface {
 
 	// RunSpeedTestNow performs an immediate speed test if speed testing is enabled.
 	RunSpeedTestNow(ctx context.Context) (*speedtest.Result, error)
+
+	// SetMetricsCollector sets the metrics collector for tracking speed test results
+	SetMetricsCollector(collector interface {
+		RecordSpeedTestResult(speedMbps float64, success bool)
+	})
 }
 
 // MonitorImpl is the concrete implementation of the Monitor interface.
@@ -115,6 +120,10 @@ type MonitorImpl struct {
 	speedTester speedtest.Tester
 	// lastSpeedTestTime tracks when the last speed test was performed
 	lastSpeedTestTime time.Time
+	// metricsCollector tracks speed test metrics (optional)
+	metricsCollector interface {
+		RecordSpeedTestResult(speedMbps float64, success bool)
+	}
 }
 
 // FailureCallback is invoked when health check failures exceed the configured threshold.
@@ -373,11 +382,19 @@ func (m *MonitorImpl) runSpeedTest(ctx context.Context) {
 
 	if err != nil {
 		m.logger.Warn("Speed test failed", "error", err)
+		// Record failed speed test in metrics
+		if m.metricsCollector != nil {
+			m.metricsCollector.RecordSpeedTestResult(0.0, false)
+		}
 		return
 	}
 
 	if result != nil {
 		m.status.LastSpeedTest = result
+		// Record successful speed test in metrics
+		if m.metricsCollector != nil {
+			m.metricsCollector.RecordSpeedTestResult(result.SpeedMbps, true)
+		}
 		m.logger.Info("Speed test completed",
 			"endpoint", result.Endpoint,
 			"test_size", result.TestSize,
@@ -393,12 +410,23 @@ func (m *MonitorImpl) RunSpeedTestNow(ctx context.Context) (*speedtest.Result, e
 	}
 
 	result, err := m.speedTester.RunTest(ctx)
+
+	m.mu.Lock()
+	m.lastSpeedTestTime = time.Now()
+
 	if result != nil {
-		m.mu.Lock()
 		m.status.LastSpeedTest = result
-		m.lastSpeedTestTime = time.Now()
-		m.mu.Unlock()
+		// Record successful speed test in metrics
+		if m.metricsCollector != nil {
+			m.metricsCollector.RecordSpeedTestResult(result.SpeedMbps, true)
+		}
+	} else if err != nil {
+		// Record failed speed test in metrics
+		if m.metricsCollector != nil {
+			m.metricsCollector.RecordSpeedTestResult(0.0, false)
+		}
 	}
+	m.mu.Unlock()
 
 	return result, err
 }
@@ -434,4 +462,13 @@ func (m *MonitorImpl) ValidateSpeedTestEndpoints(ctx context.Context) map[string
 		return map[string]bool{}
 	}
 	return m.speedTester.ValidateEndpoints(ctx)
+}
+
+// SetMetricsCollector sets the metrics collector for tracking speed test results
+func (m *MonitorImpl) SetMetricsCollector(collector interface {
+	RecordSpeedTestResult(speedMbps float64, success bool)
+}) {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+	m.metricsCollector = collector
 }

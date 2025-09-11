@@ -702,3 +702,33 @@ remote test.example.com 1194
 	err = manager.Stop()
 	assert.NoError(t, err, "Expected successful stop")
 }
+
+// Mock metrics collector for testing VPN events
+type mockVPNMetricsCollector struct {
+	events []string
+}
+
+func (m *mockVPNMetricsCollector) RecordVPNEvent(eventType string) {
+	m.events = append(m.events, eventType)
+}
+
+func TestSetMetricsCollector(t *testing.T) {
+	mockCollector := &mockVPNMetricsCollector{
+		events: make([]string, 0),
+	}
+
+	// Create manager with test config
+	cfg := createTestConfig()
+	logger := slog.New(slog.NewTextHandler(os.Stdout, &slog.HandlerOptions{Level: slog.LevelDebug}))
+	manager := NewManager(cfg, logger)
+
+	// Test that SetMetricsCollector doesn't panic
+	assert.NotPanics(t, func() {
+		manager.SetMetricsCollector(mockCollector)
+	}, "SetMetricsCollector should not panic")
+
+	// Test setting it again with nil
+	assert.NotPanics(t, func() {
+		manager.SetMetricsCollector(nil)
+	}, "SetMetricsCollector with nil should not panic")
+}

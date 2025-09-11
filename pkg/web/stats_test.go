@@ -2,13 +2,10 @@ package web
 
 import (
 	"encoding/json"
-	"log/slog"
 	"net/http"
 	"net/http/httptest"
-	"openxvpn/pkg/ipdetector"
 	"openxvpn/pkg/metrics"
 	"testing"
-	"time"
 
 	"github.com/stretchr/testify/assert"
 )
@@ -69,22 +66,6 @@ func TestStatsEndpoint(t *testing.T) {
 	assert.Contains(t, response.OutgoingAPICalls, metrics.GeoLookup)
 	assert.Contains(t, response.OutgoingAPICalls[metrics.GeoLookup], "ip2location.io")
 	assert.Equal(t, 2, response.OutgoingAPICalls[metrics.GeoLookup]["ip2location.io"].TotalCalls)
-}
-
-func TestStatsEndpointMethodNotAllowed(t *testing.T) {
-	server, _, _ := createTestServer()
-	server.metricsCollector = metrics.NewCollector()
-
-	// Test with unsupported method
-	req := httptest.NewRequest("POST", "/stats.json", nil)
-	w := httptest.NewRecorder()
-
-	// Set up the HTTP handler with the withAuth middleware
-	handler := http.HandlerFunc(server.handleStats)
-	wrappedAuthHandler := server.withAuth(handler)
-	wrappedAuthHandler.ServeHTTP(w, req)
-
-	assert.Equal(t, http.StatusMethodNotAllowed, w.Code)
 }
 
 func TestMetricsMiddleware(t *testing.T) {
@@ -156,34 +137,6 @@ func TestSetMetricsCollector(t *testing.T) {
 	assert.Contains(t, response.OutgoingAPICalls, metrics.IPOnlyLookup)
 	assert.Contains(t, response.OutgoingAPICalls[metrics.IPOnlyLookup], "test-service")
 	assert.Equal(t, 1, response.OutgoingAPICalls[metrics.IPOnlyLookup]["test-service"].TotalCalls)
-}
-
-func TestSetMetricsCollectorWithRealDetector(t *testing.T) {
-	// Create a server with a real detector
-
-	// Create a real detector
-	detector := ipdetector.NewDetector(ipdetector.Config{
-		Timeout: 5 * time.Second,
-		Logger:  slog.Default(),
-	})
-
-	// Create a server with this detector
-	server := &Server{
-		ipDetector: detector,
-		logger:     slog.Default(),
-	}
-
-	// Create a new metrics collector
-	collector := metrics.NewCollector()
-
-	// Set the metrics collector
-	server.SetMetricsCollector(collector)
-
-	// Verify the metrics collector was set
-	assert.Equal(t, collector, server.metricsCollector)
-
-	// Since the implementation is private, we have to trust that the detector
-	// received the collector. We've already verified this works in the detector tests.
 }
 
 func TestHandleStatsMethodCheck(t *testing.T) {

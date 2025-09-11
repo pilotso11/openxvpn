@@ -57,6 +57,10 @@ func (m *mockVPNManager) GetIPDetector() ipdetector.Detector {
 	return m.ipDetector
 }
 
+func (m *mockVPNManager) SetMetricsCollector(collector interface{ RecordVPNEvent(eventType string) }) {
+	// Mock implementation - no-op for testing
+}
+
 // mockIPDetector for testing health monitor
 type mockIPDetector struct {
 	currentIP  string

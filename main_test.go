@@ -116,6 +116,12 @@ func (m *MockHealthMonitor) RunSpeedTestNow(ctx context.Context) (*speedtest.Res
 	}, nil
 }
 
+func (m *MockHealthMonitor) SetMetricsCollector(collector interface {
+	RecordSpeedTestResult(speed float64, success bool)
+}) {
+	// Mock implementation - no-op for testing
+}
+
 // Test utility methods
 
 func (m *MockHealthMonitor) WasStartCalled() bool {

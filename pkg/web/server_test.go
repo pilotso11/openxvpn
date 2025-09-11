@@ -52,6 +52,10 @@ func (m *mockVPNManager) GetIPDetector() ipdetector.Detector {
 	return m.ipDetector
 }
 
+func (m *mockVPNManager) SetMetricsCollector(collector interface{ RecordVPNEvent(eventType string) }) {
+	// Mock implementation - do nothing
+}
+
 // mockIPDetector implements the IP detector interface for testing
 type mockIPDetector struct {
 	currentIP      string
@@ -197,6 +201,12 @@ func (m *MockHealthMonitor) RunSpeedTestNow(ctx context.Context) (*speedtest.Res
 		Success:   true,
 		Timestamp: time.Now(),
 	}, nil
+}
+
+func (m *MockHealthMonitor) SetMetricsCollector(collector interface {
+	RecordSpeedTestResult(speedMbps float64, success bool)
+}) {
+	// Mock implementation - do nothing
 }
 
 // Test utility methods

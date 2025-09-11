@@ -174,6 +174,13 @@ func (m *MockVPNManager) GetIPDetector() ipdetector.Detector {
 	return m.ipDetector
 }
 
+func (m *MockVPNManager) SetMetricsCollector(collector interface{ RecordVPNEvent(eventType string) }) {
+	// Mock implementation - no-op for testing
+	m.mu.Lock()
+	defer m.mu.Unlock()
+	m.callHistory = append(m.callHistory, "SetMetricsCollector")
+}
+
 // Test assertion helpers
 
 // WasStartCalled returns true if Start() was called

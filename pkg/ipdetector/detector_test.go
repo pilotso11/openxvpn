@@ -1514,18 +1514,31 @@ func TestJSONValidationChanges(t *testing.T) {
 }
 
 func TestSetMetricsCollector(t *testing.T) {
+	mockServer := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Content-Type", "application/json")
+		w.WriteHeader(http.StatusOK)
+		w.Write([]byte(`{"ip": "1.2.3.4", "country": "Test Country", "city": "Test City", "asn_org": "Test ISP"}`))
+	}))
+	defer mockServer.Close()
+
 	detector := NewDetector(Config{
 		Timeout: 5 * time.Second,
 		Logger:  slog.Default(),
 	})
+	detector = overrideIfconfigURL(detector, mockServer.URL)
 
-	// Initially the metrics collector should be nil
-
-	// Create and set a metrics collector
-	collector := &metrics.Collector{}
+	collector := metrics.NewCollector()
 	detector.SetMetricsCollector(collector)
 
-	// Verify the collector was set (we can't directly access the field, but we can test functionality)
-	// We would need to make API calls that use the collector, but for coverage purposes
-	// just calling the method is enough
+	// Make an API call that should trigger metrics collection
+	_, err := detector.GetIPInfo(context.Background(), "1.2.3.4")
+	require.NoError(t, err)
+
+	stats := collector.GetStats()
+	// Verify that an outgoing call was recorded for geo_lookup
+	geoLookups := stats.OutgoingAPICalls[metrics.GeoLookup]
+	assert.Len(t, geoLookups, 1)
+	// Check that the geo_lookup endpoint was called
+	assert.Contains(t, geoLookups, "geo_lookup")
+	assert.Equal(t, 1, geoLookups["geo_lookup"].TotalCalls)
 }

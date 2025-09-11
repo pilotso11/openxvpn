@@ -19,14 +19,11 @@ build-all: ## Build for all platforms
 	GOOS=windows GOARCH=amd64 go build -o dist/openxvpn-windows-amd64.exe .
 
 # Test targets
-test: ## Run tests
-	go test ./pkg/config ./pkg/ipdetector ./pkg/logging
+test: test-coverage
+	go test ./...
 
 test-verbose: ## Run tests with verbose output
 	go test -v -race ./...
-
-test-race: ## Run tests with race detection
-	go test -race ./...
 
 test-coverage: ## Run tests with coverage
 	go test -race -covermode=atomic -coverprofile=coverage.out ./...

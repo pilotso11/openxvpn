@@ -9,6 +9,7 @@ import (
 	"math/rand"
 	"net"
 	"net/http"
+	"openxvpn/pkg/metrics"
 	"strings"
 	"sync"
 	"time"
@@ -116,6 +117,7 @@ type Detector interface {
 	GetRawIP2LocationData(ctx context.Context, ip string) ([]byte, error)
 	GetCacheStats() map[string]any
 	ClearCache()
+	SetMetricsCollector(collector *metrics.Collector)
 }
 
 // DetectorImpl provides IP detection and geolocation services with intelligent fallback mechanisms.
@@ -131,10 +133,13 @@ type DetectorImpl struct {
 	logger         *slog.Logger
 	httpClient     *http.Client
 
-	// Cache for IP geolocation data
+	// Cache for IP information
 	cache    map[string]*CachedIPInfo
 	cacheMu  sync.RWMutex
 	cacheTTL time.Duration
+
+	// Metrics collector for tracking API calls
+	metricsCollector *metrics.Collector
 }
 
 // Config holds configuration parameters for the IP detector.
@@ -185,6 +190,11 @@ func NewDetector(cfg Config) *DetectorImpl {
 // Returns an error if all sources fail.
 func (d *DetectorImpl) GetCurrentIP(ctx context.Context) (string, error) {
 	d.logger.Debug("Fetching current IP address")
+
+	// Record this API call if metrics collector is available
+	if d.metricsCollector != nil {
+		d.metricsCollector.RecordOutgoingCall(metrics.IPOnlyLookup, "ip_detection")
+	}
 
 	// Check cache first for recent successful IP detection
 	if cached := d.getCachedIPInfo(currentIPCacheKey); cached != nil {
@@ -296,6 +306,11 @@ func (d *DetectorImpl) GetIPInfo(ctx context.Context, ip string) (*IPInfo, error
 	// Check if IP is valid
 	if ip == "" {
 		return nil, fmt.Errorf("empty IP address")
+	}
+
+	// Record this API call if metrics collector is available
+	if d.metricsCollector != nil {
+		d.metricsCollector.RecordOutgoingCall(metrics.GeoLookup, "geo_lookup")
 	}
 
 	// Check cache first to avoid unnecessary API calls
@@ -541,6 +556,11 @@ func (d *DetectorImpl) GetRawIP2LocationData(ctx context.Context, ip string) ([]
 		return nil, fmt.Errorf("IP2Location API key not configured")
 	}
 
+	// Record IP2Location API call if metrics collector is available
+	if d.metricsCollector != nil {
+		d.metricsCollector.RecordOutgoingCall(metrics.GeoLookup, "ip2location.io")
+	}
+
 	url := fmt.Sprintf("https://api.ip2location.io/?key=%s&ip=%s", d.ip2LocationKey, ip)
 
 	req, err := http.NewRequestWithContext(ctx, "GET", url, nil)
@@ -682,4 +702,9 @@ func (d *DetectorImpl) GetCacheStats() map[string]any {
 		"valid_entries":   total - expired,
 		"cache_ttl":       d.cacheTTL.String(),
 	}
+}
+
+// SetMetricsCollector sets the metrics collector for the detector
+func (d *DetectorImpl) SetMetricsCollector(collector *metrics.Collector) {
+	d.metricsCollector = collector
 }

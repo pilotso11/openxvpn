@@ -7,6 +7,7 @@ import (
 	"log/slog"
 	"net/http"
 	"net/http/httptest"
+	"openxvpn/pkg/metrics"
 	"strings"
 	"testing"
 	"time"
@@ -1510,4 +1511,34 @@ func TestJSONValidationChanges(t *testing.T) {
 		assert.Empty(t, info.ISP)
 		assert.False(t, info.Timestamp.IsZero())
 	})
+}
+
+func TestSetMetricsCollector(t *testing.T) {
+	mockServer := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Content-Type", "application/json")
+		w.WriteHeader(http.StatusOK)
+		w.Write([]byte(`{"ip": "1.2.3.4", "country": "Test Country", "city": "Test City", "asn_org": "Test ISP"}`))
+	}))
+	defer mockServer.Close()
+
+	detector := NewDetector(Config{
+		Timeout: 5 * time.Second,
+		Logger:  slog.Default(),
+	})
+	detector = overrideIfconfigURL(detector, mockServer.URL)
+
+	collector := metrics.NewCollector()
+	detector.SetMetricsCollector(collector)
+
+	// Make an API call that should trigger metrics collection
+	_, err := detector.GetIPInfo(context.Background(), "1.2.3.4")
+	require.NoError(t, err)
+
+	stats := collector.GetStats()
+	// Verify that an outgoing call was recorded for geo_lookup
+	geoLookups := stats.OutgoingAPICalls[metrics.GeoLookup]
+	assert.Len(t, geoLookups, 1)
+	// Check that the geo_lookup endpoint was called
+	assert.Contains(t, geoLookups, "geo_lookup")
+	assert.Equal(t, 1, geoLookups["geo_lookup"].TotalCalls)
 }

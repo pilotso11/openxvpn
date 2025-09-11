@@ -17,6 +17,7 @@ import (
 	"openxvpn/pkg/config"
 	"openxvpn/pkg/health"
 	"openxvpn/pkg/ipdetector"
+	"openxvpn/pkg/metrics"
 	"openxvpn/pkg/speedtest"
 	"openxvpn/pkg/vpn"
 )
@@ -50,6 +51,10 @@ func (m *mockVPNManager) UpdateCurrentIP(ip string) {
 
 func (m *mockVPNManager) GetIPDetector() ipdetector.Detector {
 	return m.ipDetector
+}
+
+func (m *mockVPNManager) SetMetricsCollector(collector interface{ RecordVPNEvent(eventType string) }) {
+	// Mock implementation - do nothing
 }
 
 // mockIPDetector implements the IP detector interface for testing
@@ -94,6 +99,10 @@ func (m *mockIPDetector) GetCacheStats() map[string]any {
 
 func (m *mockIPDetector) ClearCache() {
 	m.cacheCleared = true
+}
+
+func (m *mockIPDetector) SetMetricsCollector(collector *metrics.Collector) {
+	// Mock implementation - no-op for testing
 }
 
 // Ensure mockVPNManager implements the vpn.Manager interface
@@ -197,6 +206,12 @@ func (m *MockHealthMonitor) RunSpeedTestNow(ctx context.Context) (*speedtest.Res
 		Success:   true,
 		Timestamp: time.Now(),
 	}, nil
+}
+
+func (m *MockHealthMonitor) SetMetricsCollector(collector interface {
+	RecordSpeedTestResult(speedMbps float64, success bool)
+}) {
+	// Mock implementation - do nothing
 }
 
 // Test utility methods
@@ -679,9 +694,8 @@ func TestHandleIPInfo(t *testing.T) {
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
 			// Set up mock IP detector error state
-			if mockIPDet, ok := server.ipDetector.(*mockIPDetector); ok {
-				mockIPDet.ipInfoError = tt.ipInfoError
-			}
+			mockIPDet := server.ipDetector.(*mockIPDetector)
+			mockIPDet.ipInfoError = tt.ipInfoError
 
 			req := httptest.NewRequest(tt.method, "/api/v1/ipinfo", nil)
 			w := httptest.NewRecorder()
@@ -745,10 +759,9 @@ func TestHandleIP2LocationCompat(t *testing.T) {
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
 			// Set up mock IP detector error states
-			if mockIPDet, ok := server.ipDetector.(*mockIPDetector); ok {
-				mockIPDet.currentIPError = tt.currentIPError
-				mockIPDet.rawDataError = tt.rawDataError
-			}
+			mockIPDet := server.ipDetector.(*mockIPDetector)
+			mockIPDet.currentIPError = tt.currentIPError
+			mockIPDet.rawDataError = tt.rawDataError
 
 			req := httptest.NewRequest(tt.method, "/ip2location.json", nil)
 			w := httptest.NewRecorder()

@@ -17,6 +17,7 @@ import (
 	"openxvpn/pkg/config"
 	"openxvpn/pkg/health"
 	"openxvpn/pkg/ipdetector"
+	"openxvpn/pkg/metrics"
 	"openxvpn/pkg/vpn"
 )
 
@@ -43,6 +44,9 @@ type Server struct {
 
 	// ipDetector provides IP detection and geolocation services
 	ipDetector ipdetector.Detector
+
+	// metricsCollector provides API call tracking functionality
+	metricsCollector *metrics.Collector
 }
 
 // StatusResponse represents the unified status information returned by API endpoints.
@@ -106,13 +110,22 @@ type Reliability struct {
 // NewServer creates a new HTTP server instance with the provided dependencies.
 // The server provides REST API endpoints for VPN management and monitoring.
 func NewServer(cfg *config.Config, vpnMgr vpn.Manager, monitor health.Monitor, logger *slog.Logger) *Server {
-	return &Server{
-		config:     cfg,
-		vpnManager: vpnMgr,
-		monitor:    monitor,
-		logger:     logger,
-		ipDetector: vpnMgr.GetIPDetector(), // Reuse the VPN manager's IP detector
+	collector := metrics.NewCollector()
+	server := &Server{
+		config:           cfg,
+		vpnManager:       vpnMgr,
+		monitor:          monitor,
+		logger:           logger,
+		ipDetector:       vpnMgr.GetIPDetector(), // Reuse the VPN manager's IP detector
+		metricsCollector: collector,
 	}
+
+	// Set the metrics collector on all components
+	server.ipDetector.SetMetricsCollector(collector)
+	vpnMgr.SetMetricsCollector(collector)
+	monitor.SetMetricsCollector(collector)
+
+	return server
 }
 
 // Start initializes and starts the HTTP server with all configured endpoints.
@@ -137,6 +150,9 @@ func (s *Server) Start(ctx context.Context) error {
 	mux.HandleFunc("/ip2location.json", s.handleIP2LocationCompat) // Shell script compatibility
 	mux.HandleFunc("/api/v1/cache/stats", s.handleCacheStats)
 	mux.HandleFunc("/api/v1/cache/clear", s.handleCacheClear)
+
+	// Stats endpoint
+	mux.HandleFunc("/stats.json", s.handleStats)
 
 	// Static content (for compatibility with existing web interface)
 	mux.HandleFunc("/", s.handleIndex)
@@ -502,9 +518,15 @@ func (s *Server) withAuth(next http.Handler) http.Handler {
 // withLogging provides HTTP request logging middleware for all endpoints.
 // It logs request details including method, path, duration, and remote address
 // for debugging and monitoring purposes using structured logging.
+// It also records API call metrics if a metrics collector is configured.
 func (s *Server) withLogging(next http.Handler) http.Handler {
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		start := time.Now()
+
+		// Record incoming API call if metrics collector is available
+		if s.metricsCollector != nil {
+			s.metricsCollector.RecordIncomingCall(r.URL.Path)
+		}
 
 		next.ServeHTTP(w, r)
 
@@ -515,4 +537,41 @@ func (s *Server) withLogging(next http.Handler) http.Handler {
 			"remote_addr", r.RemoteAddr,
 		)
 	})
+}
+
+// handleStats returns current API call statistics
+func (s *Server) handleStats(w http.ResponseWriter, r *http.Request) {
+	if r.Method != http.MethodGet {
+		http.Error(w, "Method not allowed", http.StatusMethodNotAllowed)
+		return
+	}
+
+	if s.metricsCollector == nil {
+		w.WriteHeader(http.StatusInternalServerError)
+		w.Write([]byte(`{"error": "Metrics collector not configured"}`))
+		return
+	}
+
+	stats := s.metricsCollector.GetStats()
+
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(http.StatusOK)
+	if err := json.NewEncoder(w).Encode(stats); err != nil {
+		s.logger.Error("Failed to encode stats response", "error", err)
+	}
+}
+
+// SetMetricsCollector sets a custom metrics collector for the server
+// This is primarily used for testing or when a shared collector is needed
+func (s *Server) SetMetricsCollector(collector *metrics.Collector) {
+	s.metricsCollector = collector
+
+	// Update IP detector with the metrics collector
+	s.ipDetector.SetMetricsCollector(collector)
+
+	// Update VPN manager with the metrics collector
+	s.vpnManager.SetMetricsCollector(collector)
+
+	// Update health monitor with the metrics collector
+	s.monitor.SetMetricsCollector(collector)
 }

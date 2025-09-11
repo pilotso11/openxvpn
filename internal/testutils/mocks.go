@@ -10,6 +10,7 @@ import (
 	"time"
 
 	"openxvpn/pkg/ipdetector"
+	"openxvpn/pkg/metrics"
 	"openxvpn/pkg/speedtest"
 	"openxvpn/pkg/vpn"
 )
@@ -174,6 +175,13 @@ func (m *MockVPNManager) GetIPDetector() ipdetector.Detector {
 	return m.ipDetector
 }
 
+func (m *MockVPNManager) SetMetricsCollector(collector interface{ RecordVPNEvent(eventType string) }) {
+	// Mock implementation - no-op for testing
+	m.mu.Lock()
+	defer m.mu.Unlock()
+	m.callHistory = append(m.callHistory, "SetMetricsCollector")
+}
+
 // Test assertion helpers
 
 // WasStartCalled returns true if Start() was called
@@ -311,6 +319,10 @@ func (m *MockIPDetector) GetCacheStats() map[string]any {
 		"total_entries": 0,
 		"cache_ttl":     "24h0m0s",
 	}
+}
+
+func (m *MockIPDetector) SetMetricsCollector(collector *metrics.Collector) {
+	// Mock implementation - no-op for testing
 }
 
 // MockSpeedTester provides a mock implementation of speedtest.Tester

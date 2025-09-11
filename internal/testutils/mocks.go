@@ -10,6 +10,7 @@ import (
 	"time"
 
 	"openxvpn/pkg/ipdetector"
+	"openxvpn/pkg/metrics"
 	"openxvpn/pkg/speedtest"
 	"openxvpn/pkg/vpn"
 )
@@ -318,6 +319,10 @@ func (m *MockIPDetector) GetCacheStats() map[string]any {
 		"total_entries": 0,
 		"cache_ttl":     "24h0m0s",
 	}
+}
+
+func (m *MockIPDetector) SetMetricsCollector(collector *metrics.Collector) {
+	// Mock implementation - no-op for testing
 }
 
 // MockSpeedTester provides a mock implementation of speedtest.Tester

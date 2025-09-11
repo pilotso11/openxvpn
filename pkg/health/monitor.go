@@ -380,21 +380,16 @@ func (m *MonitorImpl) runSpeedTest(ctx context.Context) {
 
 	m.lastSpeedTestTime = time.Now()
 
+	// Record speed test metrics
+	m.recordSpeedTestMetrics(result, err)
+
 	if err != nil {
 		m.logger.Warn("Speed test failed", "error", err)
-		// Record failed speed test in metrics
-		if m.metricsCollector != nil {
-			m.metricsCollector.RecordSpeedTestResult(0.0, false)
-		}
 		return
 	}
 
 	if result != nil {
 		m.status.LastSpeedTest = result
-		// Record successful speed test in metrics
-		if m.metricsCollector != nil {
-			m.metricsCollector.RecordSpeedTestResult(result.SpeedMbps, true)
-		}
 		m.logger.Info("Speed test completed",
 			"endpoint", result.Endpoint,
 			"test_size", result.TestSize,
@@ -414,17 +409,11 @@ func (m *MonitorImpl) RunSpeedTestNow(ctx context.Context) (*speedtest.Result, e
 	m.mu.Lock()
 	m.lastSpeedTestTime = time.Now()
 
-	if err != nil || result == nil {
-		// Record failed speed test in metrics
-		if m.metricsCollector != nil {
-			m.metricsCollector.RecordSpeedTestResult(0.0, false)
-		}
-	} else {
+	// Record speed test metrics
+	m.recordSpeedTestMetrics(result, err)
+
+	if result != nil {
 		m.status.LastSpeedTest = result
-		// Record successful speed test in metrics
-		if m.metricsCollector != nil {
-			m.metricsCollector.RecordSpeedTestResult(result.SpeedMbps, true)
-		}
 	}
 	m.mu.Unlock()
 
@@ -471,4 +460,16 @@ func (m *MonitorImpl) SetMetricsCollector(collector interface {
 	m.mu.Lock()
 	defer m.mu.Unlock()
 	m.metricsCollector = collector
+}
+
+// recordSpeedTestMetrics records speed test results in the metrics collector
+func (m *MonitorImpl) recordSpeedTestMetrics(result *speedtest.Result, err error) {
+	if m.metricsCollector == nil {
+		return
+	}
+	if err != nil {
+		m.metricsCollector.RecordSpeedTestResult(0.0, false)
+	} else if result != nil {
+		m.metricsCollector.RecordSpeedTestResult(result.SpeedMbps, true)
+	}
 }

@@ -121,9 +121,7 @@ func NewServer(cfg *config.Config, vpnMgr vpn.Manager, monitor health.Monitor, l
 	}
 
 	// Set the metrics collector on all components
-	if detector, ok := server.ipDetector.(*ipdetector.DetectorImpl); ok {
-		detector.SetMetricsCollector(collector)
-	}
+	server.ipDetector.SetMetricsCollector(collector)
 	vpnMgr.SetMetricsCollector(collector)
 	monitor.SetMetricsCollector(collector)
 
@@ -569,9 +567,7 @@ func (s *Server) SetMetricsCollector(collector *metrics.Collector) {
 	s.metricsCollector = collector
 
 	// Update IP detector with the metrics collector
-	if detector, ok := s.ipDetector.(*ipdetector.DetectorImpl); ok {
-		detector.SetMetricsCollector(collector)
-	}
+	s.ipDetector.SetMetricsCollector(collector)
 
 	// Update VPN manager with the metrics collector
 	s.vpnManager.SetMetricsCollector(collector)

@@ -20,7 +20,7 @@ build-all: ## Build for all platforms
 
 # Test targets
 test: test-coverage
-	go test ./pkg/config ./pkg/ipdetector ./pkg/logging ./pkg/metrics ./pkg/web
+	go test ./...
 
 test-verbose: ## Run tests with verbose output
 	go test -v -race ./...

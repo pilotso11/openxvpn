@@ -14,6 +14,7 @@ import (
 
 	"openxvpn/pkg/config"
 	"openxvpn/pkg/ipdetector"
+	"openxvpn/pkg/metrics"
 )
 
 // Mock IP detector for testing
@@ -61,6 +62,10 @@ func (m *mockIPDetector) ClearCache() {}
 
 func (m *mockIPDetector) GetCacheStats() map[string]any {
 	return map[string]any{}
+}
+
+func (m *mockIPDetector) SetMetricsCollector(collector *metrics.Collector) {
+	// Mock implementation - no-op for testing
 }
 
 func (m *mockIPDetector) GetRawIP2LocationData(ctx context.Context, ip string) ([]byte, error) {
@@ -726,6 +731,13 @@ func TestSetMetricsCollector(t *testing.T) {
 	assert.NotPanics(t, func() {
 		manager.SetMetricsCollector(mockCollector)
 	}, "SetMetricsCollector should not panic")
+
+	// Test that VPN events are recorded by the collector
+
+	// Test Stop event recording (this should work even without a running VPN process)
+	err := manager.Stop()
+	assert.NoError(t, err, "Stop should not error")
+	assert.Contains(t, mockCollector.events, "vpn_disconnect", "Expected vpn_disconnect event to be recorded")
 
 	// Test setting it again with nil
 	assert.NotPanics(t, func() {

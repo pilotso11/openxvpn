@@ -117,6 +117,7 @@ type Detector interface {
 	GetRawIP2LocationData(ctx context.Context, ip string) ([]byte, error)
 	GetCacheStats() map[string]any
 	ClearCache()
+	SetMetricsCollector(collector *metrics.Collector)
 }
 
 // DetectorImpl provides IP detection and geolocation services with intelligent fallback mechanisms.

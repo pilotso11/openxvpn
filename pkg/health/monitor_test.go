@@ -14,6 +14,7 @@ import (
 	"openxvpn/internal/testutils"
 	"openxvpn/pkg/config"
 	"openxvpn/pkg/ipdetector"
+	"openxvpn/pkg/metrics"
 	"openxvpn/pkg/speedtest"
 	"openxvpn/pkg/vpn"
 )
@@ -106,6 +107,10 @@ func (m *mockIPDetector) GetCacheStats() map[string]interface{} {
 		"valid_entries":   0,
 		"cache_ttl":       "1h0m0s",
 	}
+}
+
+func (m *mockIPDetector) SetMetricsCollector(collector *metrics.Collector) {
+	// Mock implementation - no-op for testing
 }
 
 func createTestMonitor() (*MonitorImpl, *testutils.MockVPNManager, *testutils.MockIPDetector) {

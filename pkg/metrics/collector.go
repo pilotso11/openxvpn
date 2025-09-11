@@ -52,7 +52,7 @@ type StatsResponse struct {
 	IncomingAPICalls map[string]*EndpointStats            `json:"incoming_api_calls"`
 	OutgoingAPICalls map[string]map[string]*EndpointStats `json:"outgoing_api_calls"`
 	VPNEvents        map[string]*EndpointStats            `json:"vpn_events"`
-	SpeedTestResults *SpeedTestStats                      `json:"speed_test_results"`
+	SpeedTestResults *SpeedTestStats                      `json:"speed_test_stats"`
 	ApplicationStart time.Time                            `json:"application_start"`
 	LastUpdated      time.Time                            `json:"last_updated"`
 }

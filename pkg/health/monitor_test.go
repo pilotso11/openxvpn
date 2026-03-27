@@ -136,6 +136,7 @@ func createTestMonitor() (*MonitorImpl, *testutils.MockVPNManager, *testutils.Mo
 		vpnManager: mockVPN,
 		logger:     slog.Default(),
 		ipDetector: mockIP,
+		tunChecker: func() bool { return true }, // Default: tun is up
 		status: Status{
 			Status:           "healthy",
 			LastCheck:        time.Now(),
@@ -241,27 +242,42 @@ func TestPerformHealthCheckVPNDisconnected(t *testing.T) {
 	assert.Contains(t, err.Error(), "VPN is not connected", "Expected error to contain 'VPN is not connected'")
 }
 
-func TestPerformHealthCheckIPDetectionFail(t *testing.T) {
+func TestPerformHealthCheckIPDetectionFail_TUNUp(t *testing.T) {
 	monitor, mockVPN, mockIP := createTestMonitor()
 
-	// Set up IP detection failure scenario
-	mockVPN.WithStatus(vpn.Status{State: "connected"})
+	// Set up IP detection failure scenario with tun up
+	mockVPN.WithStatus(vpn.Status{State: "connected", OriginalIP: "203.0.113.1"})
 	mockIP.WithFailure(true)
+	monitor.tunChecker = func() bool { return true }
 
 	_, _, err := monitor.performHealthCheck()
 
-	require.Error(t, err, "Expected health check to fail when IP detection fails")
+	// With tun up, IP detection failure is treated as healthy
+	require.NoError(t, err, "Expected health check to pass when tun is up despite IP detection failure")
+}
 
-	assert.Contains(t, err.Error(), "failed to get current IP", "Expected error to contain 'failed to get current IP'")
+func TestPerformHealthCheckIPDetectionFail_TUNDown(t *testing.T) {
+	monitor, mockVPN, mockIP := createTestMonitor()
+
+	// Set up IP detection failure scenario with tun down
+	mockVPN.WithStatus(vpn.Status{State: "connected"})
+	mockIP.WithFailure(true)
+	monitor.tunChecker = func() bool { return false }
+
+	_, _, err := monitor.performHealthCheck()
+
+	require.Error(t, err, "Expected health check to fail when tun is down")
+	assert.Contains(t, err.Error(), "TUN interface is down", "Expected TUN-specific error message")
 }
 
 func TestPerformHealthCheckIPUnchanged(t *testing.T) {
 	monitor, mockVPN, mockIP := createTestMonitor()
 
-	// Set up scenario where IP hasn't changed (VPN not working)
+	// Set up scenario where IP hasn't changed (VPN not routing traffic)
 	mockVPN.Status.State = "connected"
 	mockVPN.Status.OriginalIP = "192.0.2.1"
 	mockIP.CurrentIP = "192.0.2.1" // Same as original
+	monitor.tunChecker = func() bool { return true }
 
 	_, _, err := monitor.performHealthCheck()
 
@@ -290,11 +306,11 @@ func TestRunHealthCheckSuccess(t *testing.T) {
 }
 
 func TestRunHealthCheckFailure(t *testing.T) {
-	monitor, mockVPN, mockIP := createTestMonitor()
+	monitor, mockVPN, _ := createTestMonitor()
 
-	// Set up failure scenario
+	// Set up failure scenario: tun interface is down
 	mockVPN.Status.State = "connected"
-	mockIP.ShouldFail = true
+	monitor.tunChecker = func() bool { return false }
 
 	initialChecks := monitor.status.TotalChecks
 
@@ -308,7 +324,7 @@ func TestRunHealthCheckFailure(t *testing.T) {
 }
 
 func TestRunHealthCheckFailureThreshold(t *testing.T) {
-	monitor, mockVPN, mockIP := createTestMonitor()
+	monitor, mockVPN, _ := createTestMonitor()
 
 	// Set up callback to track if it was called
 	var callbackCalled int32 // Use atomic for race-safe access
@@ -317,9 +333,9 @@ func TestRunHealthCheckFailureThreshold(t *testing.T) {
 		return nil
 	})
 
-	// Set up failure scenario
+	// Set up failure scenario: tun interface is down
 	mockVPN.Status.State = "connected"
-	mockIP.ShouldFail = true
+	monitor.tunChecker = func() bool { return false }
 
 	// Run health checks until threshold is reached
 	for i := 0; i < monitor.config.Health.FailureThreshold; i++ {
@@ -392,13 +408,14 @@ func TestSuccessRateCalculation(t *testing.T) {
 	// Set up alternating success/failure pattern
 	mockVPN.Status.State = "connected"
 
-	// Run 10 checks: 7 success, 3 failures
+	// Run 10 checks: 7 success (tun up), 3 failures (tun down)
 	for i := 0; i < 10; i++ {
 		if i < 7 {
 			mockIP.ShouldFail = false
 			mockIP.CurrentIP = "192.0.2.1"
+			monitor.tunChecker = func() bool { return true }
 		} else {
-			mockIP.ShouldFail = true
+			monitor.tunChecker = func() bool { return false }
 		}
 		monitor.runHealthCheck()
 	}
@@ -763,6 +780,7 @@ func TestStart_WithSpeedTest(t *testing.T) {
 		vpnManager:  mockVPN,
 		logger:      slog.Default(),
 		ipDetector:  mockIP,
+		tunChecker:  func() bool { return true },
 		speedTester: &mockSpeedTester{shouldFail: false},
 		status: Status{
 			Status:           "healthy",
@@ -945,6 +963,7 @@ func TestMonitor_DifferentConfigurations(t *testing.T) {
 			vpnManager: mockVPN,
 			logger:     slog.Default(),
 			ipDetector: mockIP,
+			tunChecker: func() bool { return false }, // tun down triggers failure
 			status:     Status{},
 			callbacks:  []FailureCallback{},
 		}
@@ -955,7 +974,7 @@ func TestMonitor_DifferentConfigurations(t *testing.T) {
 			return nil
 		})
 
-		// Run health check - should trigger callback immediately since threshold is 0
+		// Run health check - should trigger callback immediately since threshold is 0 and tun is down
 		monitor.runHealthCheck()
 		time.Sleep(20 * time.Millisecond)
 
@@ -982,6 +1001,7 @@ func TestMonitor_DifferentConfigurations(t *testing.T) {
 			vpnManager: mockVPN,
 			logger:     slog.Default(),
 			ipDetector: mockIP,
+			tunChecker: func() bool { return true },
 			status:     Status{},
 		}
 
@@ -1075,13 +1095,14 @@ func TestHealthVPNIntegration(t *testing.T) {
 
 		mockVPN.Status.State = "connected"
 
-		// Run pattern: 6 success, 4 failures = 60% success rate
+		// Run pattern: 6 success (tun up), 4 failures (tun down) = 60% success rate
 		for i := 0; i < 10; i++ {
 			if i < 6 {
 				mockIP.ShouldFail = false
 				mockIP.CurrentIP = "192.0.2.1"
+				monitor.tunChecker = func() bool { return true }
 			} else {
-				mockIP.ShouldFail = true
+				monitor.tunChecker = func() bool { return false }
 			}
 			monitor.runHealthCheck()
 		}

@@ -53,6 +53,10 @@ func (m *mockVPNManager) GetIPDetector() ipdetector.Detector {
 	return m.ipDetector
 }
 
+func (m *mockVPNManager) IsTunnelActive() bool {
+	return true
+}
+
 func (m *mockVPNManager) SetMetricsCollector(collector interface{ RecordVPNEvent(eventType string) }) {
 	// Mock implementation - do nothing
 }

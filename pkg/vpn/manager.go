@@ -86,6 +86,9 @@ type Manager interface {
 	// components like health monitors.
 	GetIPDetector() ipdetector.Detector
 
+	// IsTunnelActive checks whether the VPN tunnel interface is up.
+	IsTunnelActive() bool
+
 	// SetMetricsCollector sets the metrics collector for tracking VPN events
 	SetMetricsCollector(collector interface{ RecordVPNEvent(eventType string) })
 }
@@ -558,6 +561,12 @@ func (m *ManagerImpl) GetIPDetector() ipdetector.Detector {
 	m.mu.Lock()
 	defer m.mu.Unlock()
 	return m.ipDetector
+}
+
+// IsTunnelActive checks whether the VPN tunnel interface is up.
+// This delegates to the injectable tunChecker for testability.
+func (m *ManagerImpl) IsTunnelActive() bool {
+	return m.tunChecker()
 }
 
 // SetMetricsCollector sets the metrics collector for tracking VPN events

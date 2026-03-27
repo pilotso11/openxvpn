@@ -4,7 +4,6 @@ import (
 	"context"
 	"fmt"
 	"log/slog"
-	"net"
 	"sync"
 	"time"
 
@@ -115,9 +114,6 @@ type MonitorImpl struct {
 	// ipDetector provides IP address detection and geolocation services
 	ipDetector ipdetector.Detector
 
-	// tunChecker checks whether the TUN interface is up (injectable for testing)
-	tunChecker func() bool
-
 	// speedTestTicker manages periodic speed test scheduling (optional)
 	speedTestTicker *time.Ticker
 	// speedTester provides bandwidth testing functionality (optional)
@@ -144,7 +140,6 @@ func NewMonitor(cfg *config.Config, vpnMgr vpn.Manager, logger *slog.Logger) *Mo
 		logger:     logger,
 		ipDetector: vpnMgr.GetIPDetector(), // Reuse the VPN manager's IP detector
 	}
-	monitor.tunChecker = monitor.checkTUNInterface
 
 	// Initialize speed tester if enabled in configuration
 	if cfg.Health.SpeedTest.Enabled {
@@ -288,16 +283,6 @@ func (m *MonitorImpl) runHealthCheck() {
 		"duration", time.Since(start))
 }
 
-// checkTUNInterface checks if the tun0 network interface exists and is up.
-// This is the default implementation used in production.
-func (m *MonitorImpl) checkTUNInterface() bool {
-	iface, err := net.InterfaceByName("tun0")
-	if err != nil {
-		return false
-	}
-	return iface.Flags&net.FlagUp != 0
-}
-
 // performHealthCheck does the actual health verification.
 // It uses tun interface as the primary health signal and IP detection as secondary.
 // IP detection timeouts are treated as degraded (not unhealthy) when the tun interface is up.
@@ -309,7 +294,7 @@ func (m *MonitorImpl) performHealthCheck() (string, string, error) {
 	}
 
 	// Check tun interface as primary health signal
-	tunUp := m.tunChecker()
+	tunUp := m.vpnManager.IsTunnelActive()
 	if !tunUp {
 		return "", "", fmt.Errorf("TUN interface is down, VPN tunnel not active")
 	}
@@ -321,9 +306,12 @@ func (m *MonitorImpl) performHealthCheck() (string, string, error) {
 	currentIP, err := m.ipDetector.GetCurrentIP(ctx)
 	if err != nil {
 		// tun is up but IP detection failed (timeout, DNS issues, etc.)
-		// Treat as healthy since the tunnel is active
+		// Treat as healthy since the tunnel is active; preserve last known IP
 		m.logger.Debug("IP detection failed but TUN interface is up, treating as healthy", "error", err)
-		return "", vpnStatus.OriginalIP, nil
+		m.mu.RLock()
+		lastKnownIP := m.status.CurrentIP
+		m.mu.RUnlock()
+		return lastKnownIP, vpnStatus.OriginalIP, nil
 	}
 
 	// Also update the VPN manager's current IP for status reporting

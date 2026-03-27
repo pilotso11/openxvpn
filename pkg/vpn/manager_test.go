@@ -20,7 +20,6 @@ import (
 // Mock IP detector for testing
 type mockIPDetector struct {
 	currentIP string
-	vpnIP     string // IP to return after ClearCache() is called (simulates VPN connecting)
 	err       error
 }
 
@@ -59,11 +58,7 @@ func (m *mockIPDetector) CheckIPChange(ctx context.Context, lastIP string) (bool
 	return changed, m.currentIP, m.err
 }
 
-func (m *mockIPDetector) ClearCache() {
-	if m.vpnIP != "" {
-		m.currentIP = m.vpnIP
-	}
-}
+func (m *mockIPDetector) ClearCache() {}
 
 func (m *mockIPDetector) GetCacheStats() map[string]any {
 	return map[string]any{}
@@ -500,10 +495,12 @@ verb 3
 	// Replace IP detector with mock
 	mockDetector := &mockIPDetector{
 		currentIP: "192.168.1.100",
-		vpnIP:     "10.0.0.1",
 		err:       nil,
 	}
 	manager.ipDetector = mockDetector
+
+	// Inject tunChecker that reports tun interface as up
+	manager.tunChecker = func() bool { return true }
 
 	// Test successful start
 	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
@@ -570,6 +567,9 @@ MOCK_FAIL
 	}
 	manager.ipDetector = mockDetector
 
+	// tun interface never comes up since OpenVPN fails
+	manager.tunChecker = func() bool { return false }
+
 	// Test failed start
 	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
 	defer cancel()
@@ -621,10 +621,12 @@ remote test.example.com 1194
 	// Replace IP detector with mock
 	mockDetector := &mockIPDetector{
 		currentIP: "192.168.1.100",
-		vpnIP:     "10.0.0.1",
 		err:       nil,
 	}
 	manager.ipDetector = mockDetector
+
+	// Inject tunChecker that reports tun interface as up
+	manager.tunChecker = func() bool { return true }
 
 	// Test restart
 	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
@@ -694,10 +696,12 @@ remote test.example.com 1194
 	// Replace IP detector with mock
 	mockDetector := &mockIPDetector{
 		currentIP: "192.168.1.100",
-		vpnIP:     "10.0.0.1",
 		err:       nil,
 	}
 	manager.ipDetector = mockDetector
+
+	// Inject tunChecker that reports tun interface as up
+	manager.tunChecker = func() bool { return true }
 
 	// Test start (should select one of the multi_server files)
 	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
@@ -714,6 +718,59 @@ remote test.example.com 1194
 	// Cleanup
 	err = manager.Stop()
 	assert.NoError(t, err, "Expected successful stop")
+}
+
+func TestManagerImpl_WaitForConnection_TUNInterfaceUp(t *testing.T) {
+	cfg := createTestConfig()
+	logger := createTestLogger()
+	manager := NewManager(cfg, logger)
+	manager.setState(StateConnecting)
+
+	// Simulate tun interface coming up after 2 checks
+	callCount := 0
+	manager.tunChecker = func() bool {
+		callCount++
+		return callCount >= 2
+	}
+
+	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+	defer cancel()
+
+	err := manager.waitForConnection(ctx)
+	assert.NoError(t, err, "Expected successful connection when tun interface comes up")
+	assert.GreaterOrEqual(t, callCount, 2, "Expected tunChecker to be called at least twice")
+}
+
+func TestManagerImpl_WaitForConnection_ContextCancelled(t *testing.T) {
+	cfg := createTestConfig()
+	logger := createTestLogger()
+	manager := NewManager(cfg, logger)
+	manager.setState(StateConnecting)
+
+	// tun interface never comes up
+	manager.tunChecker = func() bool { return false }
+
+	ctx, cancel := context.WithTimeout(context.Background(), 2*time.Second)
+	defer cancel()
+
+	err := manager.waitForConnection(ctx)
+	assert.Error(t, err, "Expected error when context times out")
+}
+
+func TestManagerImpl_WaitForConnection_ProcessFailed(t *testing.T) {
+	cfg := createTestConfig()
+	logger := createTestLogger()
+	manager := NewManager(cfg, logger)
+	manager.setState(StateFailed) // Process already failed
+
+	manager.tunChecker = func() bool { return false }
+
+	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+	defer cancel()
+
+	err := manager.waitForConnection(ctx)
+	assert.Error(t, err, "Expected error when process has failed")
+	assert.Contains(t, err.Error(), "OpenVPN process failed", "Expected process failure error")
 }
 
 // Mock metrics collector for testing VPN events

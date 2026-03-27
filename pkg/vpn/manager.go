@@ -8,6 +8,7 @@ import (
 	"fmt"
 	"log/slog"
 	"math/rand"
+	"net"
 	"os"
 	"os/exec"
 	"path/filepath"
@@ -85,6 +86,9 @@ type Manager interface {
 	// components like health monitors.
 	GetIPDetector() ipdetector.Detector
 
+	// IsTunnelActive checks whether the VPN tunnel interface is up.
+	IsTunnelActive() bool
+
 	// SetMetricsCollector sets the metrics collector for tracking VPN events
 	SetMetricsCollector(collector interface{ RecordVPNEvent(eventType string) })
 }
@@ -118,6 +122,8 @@ type ManagerImpl struct {
 	logger *slog.Logger
 	// ipDetector provides IP address detection and geolocation services
 	ipDetector ipdetector.Detector
+	// tunChecker checks whether the TUN interface is up (injectable for testing)
+	tunChecker func() bool
 	// metricsCollector tracks VPN events and metrics (optional)
 	metricsCollector interface {
 		RecordVPNEvent(eventType string)
@@ -150,11 +156,23 @@ func NewManager(cfg *config.Config, logger *slog.Logger) *ManagerImpl {
 		Logger:         logger.With("component", "ipdetector"),
 	})
 
-	return &ManagerImpl{
+	m := &ManagerImpl{
 		config:     cfg,
 		logger:     logger,
 		ipDetector: ipDetector,
 	}
+	m.tunChecker = m.checkTUNInterface
+	return m
+}
+
+// checkTUNInterface checks if the tun0 network interface exists and is up.
+// This is the default implementation used in production.
+func (m *ManagerImpl) checkTUNInterface() bool {
+	iface, err := net.InterfaceByName("tun0")
+	if err != nil {
+		return false
+	}
+	return iface.Flags&net.FlagUp != 0
 }
 
 // Start initiates the complete VPN connection process in the following sequence:
@@ -451,12 +469,7 @@ func (m *ManagerImpl) startVPN(ctx context.Context) error {
 		}
 	}()
 
-	// Clear the IP cache so connection verification gets a fresh IP
-	// instead of returning the cached pre-VPN original IP
-	m.ipDetector.ClearCache()
-
-	// Wait for OpenVPN to establish connection by monitoring process state
-	// and verifying connection status instead of using fixed sleep
+	// Wait for OpenVPN to establish connection by checking for tun interface
 	if err := m.waitForConnection(ctx); err != nil {
 		return fmt.Errorf("OpenVPN failed to establish connection: %w", err)
 	}
@@ -471,11 +484,11 @@ func (m *ManagerImpl) startVPN(ctx context.Context) error {
 	return nil
 }
 
-// waitForConnection waits for the OpenVPN process to establish a connection by monitoring
-// the process state and attempting to verify network connectivity. This replaces the fixed
-// sleep with proper connection state verification.
+// waitForConnection waits for the OpenVPN process to establish a connection by checking
+// for the tun0 network interface. This is more reliable than polling external IP services
+// which can be slow or unreachable during tunnel establishment.
 func (m *ManagerImpl) waitForConnection(ctx context.Context) error {
-	m.logger.Debug("Waiting for OpenVPN connection to establish")
+	m.logger.Debug("Waiting for OpenVPN connection to establish (checking tun interface)")
 
 	ticker := time.NewTicker(1 * time.Second)
 	defer ticker.Stop()
@@ -487,30 +500,20 @@ func (m *ManagerImpl) waitForConnection(ctx context.Context) error {
 		case <-ctx.Done():
 			return ctx.Err()
 		case <-timeout:
-			return fmt.Errorf("timeout waiting for OpenVPN connection")
+			return fmt.Errorf("timeout waiting for OpenVPN connection (tun interface not detected)")
 		case <-ticker.C:
 			// Check if process failed
 			if State(m.state.Load()) == StateFailed {
 				return fmt.Errorf("OpenVPN process failed during startup")
 			}
 
-			// Try to get current IP and verify it changed from original
-			// Use a short timeout for this check
-			checkCtx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
-			currentIP, err := m.ipDetector.GetCurrentIP(checkCtx)
-			cancel()
-			if err == nil {
-				if currentIP != m.originalIP {
-					m.logger.Info("OpenVPN connection verified", "newIP", currentIP)
-					return nil
-				}
-				// IP hasn't changed yet, clear cache for next attempt
-				m.ipDetector.ClearCache()
-				m.logger.Debug("IP unchanged, VPN not ready yet", "ip", currentIP)
-				continue
+			// Check if tun interface is up
+			if m.tunChecker() {
+				m.logger.Info("OpenVPN connection verified (tun interface is up)")
+				return nil
 			}
 
-			m.logger.Debug("OpenVPN connection not ready yet, continuing to wait")
+			m.logger.Debug("OpenVPN connection not ready yet, tun interface not found")
 		}
 	}
 }
@@ -558,6 +561,12 @@ func (m *ManagerImpl) GetIPDetector() ipdetector.Detector {
 	m.mu.Lock()
 	defer m.mu.Unlock()
 	return m.ipDetector
+}
+
+// IsTunnelActive checks whether the VPN tunnel interface is up.
+// This delegates to the injectable tunChecker for testability.
+func (m *ManagerImpl) IsTunnelActive() bool {
+	return m.tunChecker()
 }
 
 // SetMetricsCollector sets the metrics collector for tracking VPN events

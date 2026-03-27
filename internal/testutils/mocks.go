@@ -35,7 +35,8 @@ type MockVPNManager struct {
 	callHistory []string
 
 	// Behavior control flags
-	shouldFail bool
+	shouldFail   bool
+	TunnelActive bool
 }
 
 // NewMockVPNManager creates a new mock VPN manager with default settings.
@@ -49,8 +50,9 @@ func NewMockVPNManager() *MockVPNManager {
 			CurrentIP:  "192.0.2.1",   // Example current IP after VPN
 			Server:     "test-server",
 		},
-		ipDetector:  &MockIPDetector{},
-		callHistory: make([]string, 0),
+		ipDetector:   &MockIPDetector{},
+		callHistory:  make([]string, 0),
+		TunnelActive: true, // Default: tunnel is active
 	}
 }
 
@@ -173,6 +175,12 @@ func (m *MockVPNManager) GetIPDetector() ipdetector.Detector {
 	defer m.mu.RUnlock()
 
 	return m.ipDetector
+}
+
+func (m *MockVPNManager) IsTunnelActive() bool {
+	m.mu.RLock()
+	defer m.mu.RUnlock()
+	return m.TunnelActive
 }
 
 func (m *MockVPNManager) SetMetricsCollector(collector interface{ RecordVPNEvent(eventType string) }) {

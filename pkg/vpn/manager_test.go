@@ -20,6 +20,7 @@ import (
 // Mock IP detector for testing
 type mockIPDetector struct {
 	currentIP string
+	vpnIP     string // IP to return after ClearCache() is called (simulates VPN connecting)
 	err       error
 }
 
@@ -58,7 +59,11 @@ func (m *mockIPDetector) CheckIPChange(ctx context.Context, lastIP string) (bool
 	return changed, m.currentIP, m.err
 }
 
-func (m *mockIPDetector) ClearCache() {}
+func (m *mockIPDetector) ClearCache() {
+	if m.vpnIP != "" {
+		m.currentIP = m.vpnIP
+	}
+}
 
 func (m *mockIPDetector) GetCacheStats() map[string]any {
 	return map[string]any{}
@@ -495,6 +500,7 @@ verb 3
 	// Replace IP detector with mock
 	mockDetector := &mockIPDetector{
 		currentIP: "192.168.1.100",
+		vpnIP:     "10.0.0.1",
 		err:       nil,
 	}
 	manager.ipDetector = mockDetector
@@ -615,6 +621,7 @@ remote test.example.com 1194
 	// Replace IP detector with mock
 	mockDetector := &mockIPDetector{
 		currentIP: "192.168.1.100",
+		vpnIP:     "10.0.0.1",
 		err:       nil,
 	}
 	manager.ipDetector = mockDetector
@@ -687,6 +694,7 @@ remote test.example.com 1194
 	// Replace IP detector with mock
 	mockDetector := &mockIPDetector{
 		currentIP: "192.168.1.100",
+		vpnIP:     "10.0.0.1",
 		err:       nil,
 	}
 	manager.ipDetector = mockDetector

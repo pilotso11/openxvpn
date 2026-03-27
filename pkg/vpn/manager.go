@@ -451,6 +451,10 @@ func (m *ManagerImpl) startVPN(ctx context.Context) error {
 		}
 	}()
 
+	// Clear the IP cache so connection verification gets a fresh IP
+	// instead of returning the cached pre-VPN original IP
+	m.ipDetector.ClearCache()
+
 	// Wait for OpenVPN to establish connection by monitoring process state
 	// and verifying connection status instead of using fixed sleep
 	if err := m.waitForConnection(ctx); err != nil {
@@ -490,16 +494,21 @@ func (m *ManagerImpl) waitForConnection(ctx context.Context) error {
 				return fmt.Errorf("OpenVPN process failed during startup")
 			}
 
-			// Try to get current IP to verify connectivity
+			// Try to get current IP and verify it changed from original
 			// Use a short timeout for this check
 			checkCtx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
-			if _, err := m.ipDetector.GetCurrentIP(checkCtx); err == nil {
-				cancel()
-				// Successfully got IP, connection is likely established
-				m.logger.Info("OpenVPN connection verified")
-				return nil
-			}
+			currentIP, err := m.ipDetector.GetCurrentIP(checkCtx)
 			cancel()
+			if err == nil {
+				if currentIP != m.originalIP {
+					m.logger.Info("OpenVPN connection verified", "newIP", currentIP)
+					return nil
+				}
+				// IP hasn't changed yet, clear cache for next attempt
+				m.ipDetector.ClearCache()
+				m.logger.Debug("IP unchanged, VPN not ready yet", "ip", currentIP)
+				continue
+			}
 
 			m.logger.Debug("OpenVPN connection not ready yet, continuing to wait")
 		}

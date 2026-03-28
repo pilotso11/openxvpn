@@ -1,0 +1,38 @@
+{
+  "name": "pdflight",
+  "image": "pilotso11/fullstack-devc:latest",
+  "customizations": {
+    "vscode": {
+      "extensions": [
+        "golang.go",
+        "ms-python.python",
+        "ms-python.vscode-pylance",
+        "biomejs.biome",
+        "bradlc.vscode-tailwindcss",
+        "esbenp.prettier-vscode",
+        "ms-vscode-remote.remote-containers"
+      ],
+      "settings": {
+        "editor.formatOnSave": true
+      }
+    }
+  },
+  "mounts": [
+    "source=${localEnv:HOME}/.claude,target=/home/developer/.claude,type=bind",
+    "source=${localEnv:HOME}/.config/gcloud,target=/home/developer/.config/gcloud,type=bind",
+    "source=${localEnv:HOME}/.config/gh,target=/home/developer/.config/gh,type=bind",
+    "source=${localEnv:HOME}/.ssh/id_rsa,target=/home/developer/.ssh/id_rsa,type=bind,readonly"
+  ],
+  
+  "remoteEnv": {
+    "CLAUDE_CODE_EXPERIMENTAL_AGENT_TEAMS": "true"
+  },
+  
+  "features": {
+    "ghcr.io/devcontainers/features/common-utils:2": {
+      "installZsh": true,
+      "installOhMyZsh": true,
+      "upgradePackages": true
+    }
+  }
+}

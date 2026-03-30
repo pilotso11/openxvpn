@@ -399,7 +399,7 @@ func TestConfigDefaults(t *testing.T) {
 	// Test default values
 	assert.Equal(t, "expressvpn", cfg.VPN.Provider)
 	assert.Equal(t, "/vpn/config", cfg.VPN.ConfigPath)
-	assert.Equal(t, 30*time.Second, cfg.VPN.Timeout)
+	assert.Equal(t, 60*time.Second, cfg.VPN.Timeout)
 	assert.Equal(t, 30*time.Second, cfg.Health.CheckInterval)
 	assert.Equal(t, 5*time.Second, cfg.Health.Timeout)
 	assert.Equal(t, 3, cfg.Health.FailureThreshold)

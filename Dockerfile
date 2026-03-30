@@ -53,7 +53,7 @@ EXPOSE 80
 
 # Health check using Go implementation health endpoint
 HEALTHCHECK --interval=30s --timeout=10s \
-    --start-period=10s --retries=3 CMD [ "curl", "-f", "http://localhost/health" ]
+    --start-period=90s --retries=3 CMD [ "curl", "-f", "http://localhost/health" ]
 
 # Run Go implementation
 ENTRYPOINT [ "/vpn/openxvpn" ]

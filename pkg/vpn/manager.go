@@ -493,14 +493,14 @@ func (m *ManagerImpl) waitForConnection(ctx context.Context) error {
 	ticker := time.NewTicker(1 * time.Second)
 	defer ticker.Stop()
 
-	timeout := time.After(30 * time.Second)
+	timeout := time.After(m.config.VPN.Timeout)
 
 	for {
 		select {
 		case <-ctx.Done():
 			return ctx.Err()
 		case <-timeout:
-			return fmt.Errorf("timeout waiting for OpenVPN connection (tun interface not detected)")
+			return fmt.Errorf("timeout waiting for OpenVPN connection after %s (tun interface not detected)", m.config.VPN.Timeout)
 		case <-ticker.C:
 			// Check if process failed
 			if State(m.state.Load()) == StateFailed {

@@ -155,7 +155,7 @@ func Load(configPath string) (*Config, error) {
 func setDefaults(v *viper.Viper) {
 	v.SetDefault("vpn.provider", "expressvpn")
 	v.SetDefault("vpn.config_path", "/vpn/config")
-	v.SetDefault("vpn.timeout", "30s")
+	v.SetDefault("vpn.timeout", "60s")
 	v.SetDefault("vpn.openvpn_executable", "openvpn")
 
 	v.SetDefault("health.check_interval", "30s")

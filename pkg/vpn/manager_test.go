@@ -83,6 +83,7 @@ func createTestConfig() *config.Config {
 			Server:     "test",
 			Username:   "testuser",
 			Password:   "testpass",
+			Timeout:    60 * time.Second,
 		},
 		Network: config.NetworkConfig{
 			LAN:            "192.168.1.0/24",

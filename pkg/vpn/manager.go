@@ -541,7 +541,7 @@ func (m *ManagerImpl) waitForConnection(ctx context.Context) error {
 func (m *ManagerImpl) forwardLog(r io.Reader, stream string) {
 	scanner := bufio.NewScanner(r)
 	for scanner.Scan() {
-		m.logger.Debug("openvpn", "stream", stream, "line", scanner.Text())
+		m.logger.Info("openvpn", "stream", stream, "line", scanner.Text())
 	}
 }
 

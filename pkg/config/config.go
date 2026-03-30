@@ -29,6 +29,7 @@ type VPNConfig struct {
 	Server            string        `mapstructure:"server"`
 	Timeout           time.Duration `mapstructure:"timeout"`
 	OpenVPNExecutable string        `mapstructure:"openvpn_executable"`
+	DebugLog          bool          `mapstructure:"debug_log"`
 }
 
 type HealthConfig struct {
@@ -117,6 +118,9 @@ func Load(configPath string) (*Config, error) {
 	if openVPNExe := os.Getenv("OPENVPN_EXECUTABLE"); openVPNExe != "" {
 		v.Set("vpn.openvpn_executable", openVPNExe)
 	}
+	if debugLog := os.Getenv("VPN_DEBUG_LOG"); debugLog != "" {
+		v.Set("vpn.debug_log", debugLog == "true" || debugLog == "1")
+	}
 	if testMode := os.Getenv("TEST_MODE"); testMode != "" {
 		v.Set("test_mode", testMode == "true" || testMode == "1")
 	}
@@ -157,6 +161,7 @@ func setDefaults(v *viper.Viper) {
 	v.SetDefault("vpn.config_path", "/vpn/config")
 	v.SetDefault("vpn.timeout", "60s")
 	v.SetDefault("vpn.openvpn_executable", "openvpn")
+	v.SetDefault("vpn.debug_log", false)
 
 	v.SetDefault("health.check_interval", "30s")
 	v.SetDefault("health.timeout", "5s") // 5-second timeout for HTTP calls

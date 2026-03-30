@@ -4,8 +4,10 @@
 package vpn
 
 import (
+	"bufio"
 	"context"
 	"fmt"
+	"io"
 	"log/slog"
 	"math/rand"
 	"net"
@@ -446,6 +448,23 @@ func (m *ManagerImpl) startVPN(ctx context.Context) error {
 	m.mu.Lock()
 	m.process = exec.CommandContext(ctx, m.config.VPN.OpenVPNExecutable, args...)
 	m.processExited = make(chan struct{})
+
+	// Pipe OpenVPN output to structured logging when debug_log is enabled
+	if m.config.VPN.DebugLog {
+		m.logger.Info("OpenVPN debug logging enabled")
+		stdout, err := m.process.StdoutPipe()
+		if err != nil {
+			m.mu.Unlock()
+			return fmt.Errorf("failed to create stdout pipe: %w", err)
+		}
+		stderr, err := m.process.StderrPipe()
+		if err != nil {
+			m.mu.Unlock()
+			return fmt.Errorf("failed to create stderr pipe: %w", err)
+		}
+		go m.forwardLog(stdout, "stdout")
+		go m.forwardLog(stderr, "stderr")
+	}
 	m.mu.Unlock()
 
 	// Start the process in background
@@ -515,6 +534,14 @@ func (m *ManagerImpl) waitForConnection(ctx context.Context) error {
 
 			m.logger.Debug("OpenVPN connection not ready yet, tun interface not found")
 		}
+	}
+}
+
+// forwardLog reads lines from an OpenVPN output stream and forwards them to structured logging.
+func (m *ManagerImpl) forwardLog(r io.Reader, stream string) {
+	scanner := bufio.NewScanner(r)
+	for scanner.Scan() {
+		m.logger.Debug("openvpn", "stream", stream, "line", scanner.Text())
 	}
 }
 

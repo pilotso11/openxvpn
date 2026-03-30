@@ -6,6 +6,7 @@ vpn:
   password_file: ""  # Path to file containing password, or via OPEN_VPN_PASSWORD_FILE env var
   server: ""    # Optional server filter
   timeout: "60s"
+  debug_log: false  # Set to true or VPN_DEBUG_LOG=true to see OpenVPN output
 
 health:
   check_interval: "30s"

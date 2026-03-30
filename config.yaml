@@ -5,7 +5,7 @@ vpn:
   password: ""  # Set via OPEN_VPN_PASSWORD env var
   password_file: ""  # Path to file containing password, or via OPEN_VPN_PASSWORD_FILE env var
   server: ""    # Optional server filter
-  timeout: "30s"
+  timeout: "60s"
 
 health:
   check_interval: "30s"

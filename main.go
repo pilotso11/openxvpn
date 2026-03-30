@@ -17,6 +17,8 @@ import (
 	"openxvpn/pkg/web"
 )
 
+const shutdownTimeout = 30 * time.Second
+
 type Application struct {
 	config     *config.Config
 	logger     *slog.Logger
@@ -159,7 +161,7 @@ func (app *Application) waitForVPNReady() {
 	ticker := time.NewTicker(2 * time.Second)
 	defer ticker.Stop()
 
-	timeout := time.After(30 * time.Second)
+	timeout := time.After(app.config.VPN.Timeout)
 
 	for {
 		select {
@@ -257,7 +259,7 @@ func (app *Application) shutdown(wg *sync.WaitGroup) {
 	select {
 	case <-done:
 		app.logger.Info("Graceful shutdown completed")
-	case <-time.After(30 * time.Second):
+	case <-time.After(shutdownTimeout):
 		app.logger.Warn("Shutdown timeout reached, forcing exit")
 	}
 }
